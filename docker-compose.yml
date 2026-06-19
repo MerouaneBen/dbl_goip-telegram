@@ -1,9 +1,8 @@
-version: "3.3"
 services:
   redis_db:
     container_name: redis_db
     image: "redis:alpine"
-    restart: on-failure
+    restart: always
     ports:
       - 127.0.0.1:6379:6379
     command: redis-server --include /usr/local/etc/redis/redis.conf
@@ -13,8 +12,19 @@ services:
   app:
     container_name: goip_bot
     build: app/
-    restart: on-failure
-    ports: 
+    restart: always
+    ports:
       - 44444:44444/udp
     depends_on:
       - redis_db
+  watchtower:
+    container_name: watchtower
+    image: nickfedor/watchtower
+    restart: always
+    command: redis_db watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=Africa/Algiers
+      - WATCHTOWER_SCHEDULE=0 0 4 * * *
+      - WATCHTOWER_CLEANUP=true

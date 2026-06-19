@@ -383,8 +383,8 @@ bot.on('text', async (ctx) => {
             await ctx.reply(locale.querysended);
             for(let i = 0; i < numbers?.length; i++) {
                 await new Promise(data => { setTimeout(() => { data(true) }, 500) });
-                let send = await axios.get(`http://${process.env.goip_host}/default/en_US/send.html?u=${process.env.goip_user}&p=${process.env.goip_password}&l=${channel}&n=${numbers[i]}&m=${encodeURI(ctx.update.message.text)}`).catch(e => { return { status: 'failed', err: e?.message ?? 'unknown error'} })
-                if(send?.status === 'failed' || send.status >= 400) {
+                let send = await axios.get(`http://${process.env.goip_host}/default/en_US/send.html?u=${process.env.goip_user}&p=${process.env.goip_password}&l=${channel}&n=${encodeURIComponent(numbers[i].trim().replace(/^[+]/, '00'))}&m=${encodeURIComponent(ctx.update.message.text)}`).catch(e => { return { status: 'failed', err: e?.message ?? 'unknown error'} })
+                if(send?.status === 'failed' || send.status >= 400 || /error/i.test(String(send?.data))) {
                     if(process.env?.debug) {
                         console.log(`${locale.sendingfailed}\n${numbers[i]}err${send.err}`);
                     }
