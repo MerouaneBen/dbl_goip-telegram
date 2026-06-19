@@ -384,6 +384,50 @@ bot.command('ussd', async (ctx) => {
     ctx.reply(`📲 USSD (canal ${channel}) "${code}":\n${reply || '(reponse vide)'}`);
 });
 
+const OWN_NUMBER_USSD = { djezzy: '*99#', ooredoo: '*113*1*1*1#', nedjma: '*113*1*1*1#', mobilis: '*101#' };
+
+async function ussdQuery(channel, code, closeFirst) {
+    const host = process.env.goip_host;
+    const auth = { username: process.env.goip_user, password: process.env.goip_password };
+    const smskey = String(Math.floor(Math.random() * 99999999));
+    const post = (body) => axios.post(`http://${host}/default/en_US/ussd_info.html?type=ussd`, body, { auth, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 });
+    if(closeFirst) {
+        await post(`line${channel}=1&action=USET&smskey=${smskey}&send=Disconnect&telnum=`).catch(() => {});
+        await new Promise(r => setTimeout(r, 800));
+    }
+    await post(`line${channel}=1&action=USSD&smskey=${smskey}&send=Send&telnum=${encodeURIComponent(code)}`);
+    for(let i = 0; i < 12; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        let xml;
+        try { xml = String((await axios.get(`http://${host}/default/en_US/send_sms_status.xml?line=`, { auth, timeout: 8000 })).data); } catch(e) { continue; }
+        const get = (t) => (xml.match(new RegExp(`<${t}${channel}>([^<]*)</${t}${channel}>`)) || [])[1];
+        const key = get('smskey'), status = get('status'), error = get('error');
+        if(key === smskey && (error || '').trim()) return error.trim();
+        if(key === smskey && status === 'DONE') return (error || '').trim();
+    }
+    return null;
+}
+
+bot.command('getnumber', async (ctx) => {
+    if(!await functions.auth(redis, ctx.update.message.from.id)) { ctx.reply(locale.restricted); return; }
+    let args = ctx.update.message.text.split(' ');
+    let channel = args[1];
+    let override = (args[2] || '').trim();
+    if(!channel) { ctx.reply('Usage: /getnumber <channel> [code_ussd]   ex: /getnumber 2'); return; }
+    if(!functions.checkValue(channel)) { ctx.reply(locale.incorrectchannelvalue); return; }
+    let provider = '';
+    try { provider = (JSON.parse(await redis.get(`channel_status${channel}`) || '{}').provider || '').toLowerCase(); } catch(e) {}
+    let code = override || OWN_NUMBER_USSD[provider] || '';
+    if(!code) { ctx.reply(`Operateur "${provider || 'inconnu'}" non reconnu. Donne le code: /getnumber ${channel} <code_ussd>`); return; }
+    await ctx.reply(`🔎 Recherche du numero (canal ${channel}, ${provider || '?'}) via ${code}...`);
+    let reply;
+    try { reply = await ussdQuery(channel, code, true); } catch(e) { ctx.reply(`getnumber: echec (${e?.message ?? 'erreur'})`); return; }
+    if(reply === null) { ctx.reply(`getnumber: pas de reponse (la SIM est peut-etre deconnectee).`); return; }
+    let m = reply.match(/([+]?[0-9][0-9 ().-]{6,}[0-9])/);
+    let num = m ? m[1].replace(/[ ().-]/g, '') : null;
+    ctx.reply(`📇 Canal ${channel} (${provider || '?'}):\n${num ? 'Numero detecte: ' + num + '\n' : ''}Reponse: ${reply}`);
+});
+
 bot.start(async (ctx) => {
     let registered = await functions.isRegistered(redis, ctx.update.message.from.id);
 
