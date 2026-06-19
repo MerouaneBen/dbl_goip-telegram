@@ -377,6 +377,7 @@ bot.command('ussd', async (ctx) => {
         let key = (xml.match(new RegExp(`<smskey${channel}>([^<]*)</smskey${channel}>`)) || [])[1];
         let status = (xml.match(new RegExp(`<status${channel}>([^<]*)</status${channel}>`)) || [])[1];
         let error = (xml.match(new RegExp(`<error${channel}>([^<]*)</error${channel}>`)) || [])[1];
+        if(key === smskey && (error || '').trim()) { reply = error.trim(); break; }
         if(key === smskey && status === 'DONE') { reply = (error || '').trim(); break; }
     }
     if(reply === null) { ctx.reply(`USSD ${code}: pas de reponse dans le delai imparti.`); return; }
