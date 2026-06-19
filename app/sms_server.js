@@ -346,6 +346,41 @@ bot.command('recipients', async (ctx) => {
     }
 });
 
+bot.command('ussd', async (ctx) => {
+    if(!await functions.auth(redis, ctx.update.message.from.id)) { ctx.reply(locale.restricted); return; }
+    let args = ctx.update.message.text.split(' ');
+    let channel = args[1];
+    let code = (args.slice(2).join(' ') || '').trim();
+    if(!channel || !code) { ctx.reply('Usage: /ussd <channel> <code>   ex: /ussd 2 *123#'); return; }
+    if(!functions.checkValue(channel)) { ctx.reply(locale.incorrectchannelvalue); return; }
+    const smskey = String(Math.floor(Math.random() * 99999999));
+    const host = process.env.goip_host;
+    const auth = { username: process.env.goip_user, password: process.env.goip_password };
+    try {
+        await axios.post(
+            `http://${host}/default/en_US/ussd_info.html?type=ussd`,
+            `line${channel}=1&action=USSD&smskey=${smskey}&send=Send&telnum=${encodeURIComponent(code)}`,
+            { auth, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 }
+        );
+    } catch(e) { ctx.reply(`USSD: echec d'envoi (${e?.message ?? 'erreur'})`); return; }
+    await ctx.reply(`📡 USSD ${code} envoye sur le canal ${channel}, attente de la reponse...`);
+    let reply = null;
+    for(let i = 0; i < 12; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        let xml;
+        try {
+            let res = await axios.get(`http://${host}/default/en_US/send_sms_status.xml?line=`, { auth, timeout: 8000 });
+            xml = String(res.data);
+        } catch(e) { continue; }
+        let key = (xml.match(new RegExp(`<smskey${channel}>([^<]*)</smskey${channel}>`)) || [])[1];
+        let status = (xml.match(new RegExp(`<status${channel}>([^<]*)</status${channel}>`)) || [])[1];
+        let error = (xml.match(new RegExp(`<error${channel}>([^<]*)</error${channel}>`)) || [])[1];
+        if(key === smskey && status === 'DONE') { reply = (error || '').trim(); break; }
+    }
+    if(reply === null) { ctx.reply(`USSD ${code}: pas de reponse dans le delai imparti.`); return; }
+    ctx.reply(`📲 USSD (canal ${channel}) "${code}":\n${reply || '(reponse vide)'}`);
+});
+
 bot.start(async (ctx) => {
     let registered = await functions.isRegistered(redis, ctx.update.message.from.id);
 
