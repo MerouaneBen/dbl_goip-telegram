@@ -117,8 +117,8 @@ yet been requested or received by this integration.
 Telegram command, send and launch errors now emit fixed metadata only and do
 not terminate the UDP/private-inbox process. The existing app still uses its
 one configured Telegram bot for all personal slots, including slot 2; workers never use that token or
-join its conversations. Fourteen inbox/receiver tests pass locally and on the exact deployed Pi 3
-image. The [fan-out correction evidence](personal-slot2-fanout-2026-10-18.json)
+join its conversations. Eighteen inbox/receiver tests pass locally and on the exact deployed Pi 3
+image; the initial fan-out delivery below records fourteen tests at that time. The [fan-out correction evidence](personal-slot2-fanout-2026-10-18.json)
 records those results and the remote verification.
 The inherited personal Telegram path remains best effort: its ACK precedes
 durable delivery, its legacy Redis deduplication is not a delivery guarantee,
@@ -165,3 +165,29 @@ Before replacement, the old exclusive route had counted one authenticated
 slot-2 SMS packet and suppressed its personal forwarding. Its content was not
 read/exported; this correction does not retroactively recover it. Redis,
 Watchtower, GoIP configuration, credentials and Pi 4/Asterisk are preserved.
+
+
+## Sender-independent plumbing test and Telegram recovery
+
+[Qualification record](sms-connectivity-qualification-2026-10-18.json): the
+owner confirms personal Telegram restoration and sends random texts, observed
+as 20 authenticated slot-2 packets (not necessarily 20 distinct SMS). Those
+texts do not match a reserved worker attempt. A subsequent nonbanking test
+uses the exact marker `KHA_TEST_7C4A91D2`, without any sender filter. The native
+Go client on Pi 4 polls through private HTTPS using the explicit connectivity
+mode. That window ends with `received=false` and is explicitly closed: no new
+authenticated slot-2 SMS was observed after that app replacement. The owner
+also reports the marker absent from Telegram. **Live marker fan-out is not
+validated**, despite synthetic tests and the earlier personal delivery.
+
+The initial Telegram launch had failed. Code `f7a230a`, image
+`sha256:679641ecd729fefc63c9dddab58c1356570cab3fe037da7aae99703f4af3672a`,
+delivered at 14:27:52 UTC, retries transient launch errors with 5–60 s backoff,
+honors a supplied rate-limit delay and stops automatic retries on 401/403.
+Only numeric/allowlisted failure metadata is logged, never token, URL,
+description or stack. Eighteen tests pass locally and on this exact image.
+GetMe success or absence of errors is not asserted as live Telegram delivery
+or polling health. The original personal SMS forwarding still has no durable
+retry/outbox; startup reconnection does not recover a prior undelivered SMS.
+Redis/Watchtower, Asterisk, GoIP configuration and private credentials remain
+preserved. No outbound SMS/USSD/call or payment is used as a probe.

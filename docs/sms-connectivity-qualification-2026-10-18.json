@@ -1,0 +1,117 @@
+{
+  "scope": "owner_authorized_nonbanking_sms_connectivity_qualification",
+  "code_revision": "f7a230a8cba8de6fcc8c5204f25b03b0ec4cbd2e",
+  "image_id": "sha256:679641ecd729fefc63c9dddab58c1356570cab3fe037da7aae99703f4af3672a",
+  "app_started_at": "2026-10-18T14:27:52.86613749Z",
+  "receiver_file_sha256": "04299dd46fc7bea15fa48f4588ac37a7390e74a5d297284af2375b85cdda59cc",
+  "private_inbox_file_sha256": "133344b9672f8a1f58699737abdcbfceaf4f7087d1079bd0d9d4e3f54177e891",
+  "host_and_container_hashes_match": true,
+  "tests": {
+    "local_node_tests_passed": 18,
+    "exact_pi3_image_node_tests_passed": 18,
+    "worker_scoped_go_race_tests": "PASS",
+    "worker_go_vet": "PASS",
+    "telegram_retry_tests": "bounded backoff; rate-limit delay; 401/403 stop retries; metadata-only errors"
+  },
+  "diagnostic_mode": {
+    "purpose": "connectivity_test",
+    "expected_marker": "KHA_TEST_7C4A91D2",
+    "sender_filter": false,
+    "body_match": "exact_trimmed_marker_only",
+    "bank_correlation": false,
+    "bank_accepted": false,
+    "financial_success": false,
+    "normal_transaction_client_rejects_diagnostic_correlation": true
+  },
+  "attempt_before_telegram_recovery": {
+    "receiver_code_revision": "6c1d2b7ac0feebfea2914390a649305cd9fe07d8",
+    "receiver_image": "sha256:2b5de0f33023b5bfd43c68097630ce1231a26b00bb850ae458fb09575823f52c",
+    "native_client": {
+      "started_at": "2026-10-18T14:21:11.438850+00:00",
+      "source_revision": "45ac8ff95822ed950f982ed207e55c559f5e455c",
+      "native_binary_sha256": "e7e67a1c86eb1421ab9b5670cca5c2624d87ca0158c741a037414b80840631b3",
+      "receiver_code_revision": "6c1d2b7",
+      "worker_image": "sha256:f6fbf074bcdb2a683845e24568463136cbe52807edfe1dc6744e1f807115c94e",
+      "scope": "manual_nonfinancial_qualification",
+      "bank_sms_requested": false,
+      "native_client_exit_code": 0,
+      "receipt": {
+        "attempt_id": "personal-sms-fanout-test",
+        "slot": 2,
+        "source": "goip_udp",
+        "received": false,
+        "correlation": "not_established",
+        "ambiguous": false,
+        "expired": false,
+        "consumed": false,
+        "bank_accepted": false,
+        "financial_success": false
+      },
+      "real_personal_sms_received": false,
+      "wrong_reader_refused": true,
+      "qualification_reservation_closed": true,
+      "checked_at": "2026-10-18T14:24:04.236209+00:00"
+    },
+    "outcome": "NO_MATCHED_SMS_RECEIVED",
+    "owner_reported_marker_not_visible_on_telegram": true,
+    "authenticated_slot2_sms_packets_after_restart": 0,
+    "qualification_reservation_closed": true
+  },
+  "current_private_https_from_pi4": {
+    "checked_at": "2026-10-18T14:28:15.122368+00:00",
+    "client_host": "mbrpi4dz",
+    "architecture": "aarch64",
+    "tls_certificate_verified": true,
+    "certificate_sha256": "ac2e1cfd3030e45eecbe0180fdf41c32a31d4253362effd169ae7af29eda5e4f",
+    "authenticated_status": 200,
+    "anonymous_status": 403,
+    "wrong_credential_status": 403,
+    "state": "unarmed",
+    "protected_slot": 2,
+    "last_authenticated_slot2_heartbeat_at": "2026-10-18T14:27:57.500Z",
+    "heartbeat_age_seconds": 17.622368,
+    "counters": {
+      "protected_sms": 0,
+      "rejected_packets": 0,
+      "duplicates": 0,
+      "inbox_errors": 0
+    },
+    "durable_channel_reservation": false,
+    "financial_success": false
+  },
+  "latest_gsm_metadata": {
+    "slot": 2,
+    "registered": true,
+    "signal": "31",
+    "reported_provider": "Nedjma",
+    "does_not_prove_sms_delivery": true
+  },
+  "telegram_observations": {
+    "earlier_personal_telegram_restoration_confirmed_by_owner": true,
+    "earlier_receiver_slot2_packet_count": 20,
+    "packet_count_is_not_distinct_sms_count": true,
+    "initial_launch_failure_on_6c1d2b7": true,
+    "last_recovery_snapshot_fixed_error_counts": {
+      "telegram_transport_unavailable": 0,
+      "telegram_delivery_failed": 0
+    },
+    "get_me_authenticated": true,
+    "slot2_personal_recipient_count": 1,
+    "live_marker_delivery_after_recovery": "NOT_YET_OBSERVED",
+    "polling_health_not_inferred_from_get_me": true
+  },
+  "preserved": {
+    "redis_and_watchtower_not_recreated": true,
+    "asterisk": "exited/restart=no",
+    "goip_configuration_not_changed": true,
+    "tls_and_tokens_not_changed": true,
+    "no_sms_ussd_or_call_probe_sent": true
+  },
+  "limits": [
+    "Live marker SMS not received; worker/Telegram fanout for this marker is NOT VALIDATED.",
+    "Owner phone delivery mode/status still pending.",
+    "No real bank OTP requested, read or submitted; no payment.",
+    "Normal transaction sender/reference criteria remain provisional until real bank qualification.",
+    "Personal Telegram delivery still lacks a qualified durable retry/outbox."
+  ]
+}
