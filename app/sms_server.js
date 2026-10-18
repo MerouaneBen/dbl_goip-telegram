@@ -30,7 +30,7 @@ async function messageTransmit(msgdata) {
                 `${locale.channel}: ${channelinfo.name}\n` +
                 `${locale.simnumber}: ${channelinfo.phonenum}\n` +
                 `${locale.fromnumber}: ${msgdata.srcnum}\n\n${msgdata.message}`
-            );
+            ).catch(() => console.log("telegram_delivery_failed"));
         } else {
             clearInterval(interval);
         }
@@ -481,9 +481,9 @@ bot.on('text', async (ctx) => {
     }
 });
 
-bot.catch((err, ctx) => {
+bot.catch(() => {
+    // A Telegram command failure must not terminate the private UDP inbox.
     console.log('telegram_handler_failed');
-    process.exit(1);
 })
 
 if(!process.env.goip_password || !process.env.bottoken || !process.env.admin_username) {
@@ -491,4 +491,4 @@ if(!process.env.goip_password || !process.env.bottoken || !process.env.admin_use
     process.exit(0);
 }
 
-bot.launch();
+bot.launch().catch(() => console.log('telegram_transport_unavailable'));

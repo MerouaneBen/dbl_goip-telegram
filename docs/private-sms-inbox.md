@@ -2,7 +2,8 @@
 
 This change is explicitly requested by Merouane for the Algeria prototype. It
 extends the existing Pi 3 receiver; it does not start a second GoIP UDP listener
-or require each worker to join Telegram. Slot 2 is reserved for Khallasli.
+or require each worker to join Telegram. Slot 2 is reserved for Khallasli. API configuration cannot disable the privacy
+hook: without it slot 2 stays unarmed and private.
 
 The hook runs before legacy parsing/debug/Redis/Telegram. It authenticates the
 configured gateway IP and GoIP password before processing or acknowledging a
@@ -87,3 +88,8 @@ Verify HTTPS from Pi 4 with certificate validation, authenticated health,
 anonymous rejection, and fresh authenticated slot-2 heartbeats. Report these
 separately from synthetic UDP tests and from a real banking OTP, which has not
 yet been requested or received by this integration.
+
+Telegram command, send and launch errors now emit fixed metadata only and do
+not terminate the UDP/private-inbox process. The existing app still uses its
+one configured Telegram bot for other slots; workers never use that token or
+join its conversations. Nine inbox tests pass locally and on the Pi 3.
