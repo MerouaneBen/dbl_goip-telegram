@@ -265,3 +265,36 @@ test('Redis/Telegram recipient failure does not discard the worker copy or crash
     assert.equal(inbox.receipt(scope.attempt_id, lease.reader_token)[1].received, true);
     assert.ok(h.output.includes('telegram_delivery_failed'));
 });
+
+test('connectivity test has no sender filter and only captures the exact nonbanking marker', async t => {
+    const { inbox, scope, clear } = setup(t); clear();
+    const { expected_sender, ...rest } = scope;
+    const marker = 'KHA_TEST_20261018';
+    const lease = inbox.begin({ ...rest, purpose: 'connectivity_test', expected_reference: marker })[1];
+    const h = receiverHarness(inbox);
+    await h.deliver(sms({ sender: 'RANDOM_NETWORK_NAME' }));
+    assert.equal(inbox.receipt(scope.attempt_id, lease.reader_token)[1].received, false);
+    await h.deliver(Buffer.from(`RECEIVE:marker;id:goip2;password:${PASSWORD};srcnum:ANOTHER_NETWORK_NAME;msg:${marker}`));
+    const r = inbox.receipt(scope.attempt_id, lease.reader_token)[1];
+    assert.equal(r.received, true); assert.equal(r.correlation, 'diagnostic_marker');
+    assert.equal(r.bank_accepted, false); assert.equal(r.financial_success, false);
+    assert.equal(h.sent.length, 2); assert.equal(h.acks.length, 2);
+    assert.ok(h.sent[1].text.endsWith(marker));
+    assert.equal(inbox.receipt(scope.attempt_id, lease.reader_token, true)[1].message, marker);
+});
+
+test('connectivity scope cannot capture arbitrary text, OTPs or weaken the transaction sender requirement', t => {
+    const { inbox, scope, clear } = setup(t); clear();
+    const { expected_sender, ...rest } = scope;
+    for (const body of [rest, { ...rest, purpose: 'other' },
+        { ...rest, purpose: 'connectivity_test', expected_reference: '654321' },
+        { ...rest, purpose: 'connectivity_test', expected_reference: 'REFERENCE_12345678' },
+        { ...scope, purpose: 'connectivity_test', expected_reference: 'KHA_TEST_20261018' }]) {
+        assert.equal(inbox.begin(body)[0], 400);
+    }
+    const lease = inbox.begin({ ...rest, purpose: 'connectivity_test', expected_reference: 'KHA_TEST_20261018' })[1];
+    for (const content of ['random text', '654321', 'OTP 654321 KHA_TEST_20261018']) {
+        inbox.intercept(Buffer.from(`RECEIVE:test;id:goip2;password:${PASSWORD};srcnum:ANY_SENDER;msg:${content}`), SOURCE);
+        assert.equal(inbox.receipt(scope.attempt_id, lease.reader_token)[1].received, false);
+    }
+});

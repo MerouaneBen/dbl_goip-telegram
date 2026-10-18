@@ -46,6 +46,15 @@ Another attempt is refused while the first remains reserved, including after
 expiration, ambiguity or consumption. A worker token cannot create/clear a
 reservation or read health/all messages/another attempt.
 
+For a nonbanking plumbing test only, `purpose: "connectivity_test"` omits
+`expected_sender` and requires `expected_reference` matching
+`KHA_TEST_[A-Z0-9_]{8,48}`. It accepts only an SMS whose entire trimmed body equals
+that marker, regardless of sender. Random texts/OTP messages are not captured.
+The receipt is explicitly `correlation: "diagnostic_marker"`, never bank
+correlation or acceptance. Normal transaction scopes still require sender and
+external reference; unknown purposes are rejected. Both use the same bounded
+reservation, source authentication, TTL, one-time read and personal forwarding.
+
 `GET /v1/attempts/<id>/receipt` returns metadata only. Matching requires the
 expected sender **and an external reference actually present in the SMS**.
 Timestamp or technical GoIP ID alone never matches. Identical UDP retransmission

@@ -90,10 +90,11 @@ class Inbox {
         this.prune();
         const a = this.active;
         if (a && !a.expired && !a.consumed) {
-            // Exact external reference and sender are required. A timestamp,
-            // technical GoIP ID, or "latest SMS" is never sufficient.
+            // Transaction scopes require sender AND external reference.
+            // Connectivity tests accept only the exact nonbanking marker.
             const escaped = a.reference.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const matches = p.sender === a.sender && new RegExp('(^|[^A-Za-z0-9_-])' + escaped + '($|[^A-Za-z0-9_-])').test(p.content);
+            const matches = a.connectivityTest ? p.content.trim() === a.reference :
+                p.sender === a.sender && new RegExp('(^|[^A-Za-z0-9_-])' + escaped + '($|[^A-Za-z0-9_-])').test(p.content);
             if (matches) {
                 const digest = crypto.createHmac('sha256', a.digestKey).update(buffer).digest('hex');
                 if (a.digest === digest) this.counter.duplicates++;
@@ -127,14 +128,18 @@ class Inbox {
     begin(body) {
         this.prune();
         if (!this.armed || this.active) return [409, { error: 'channel_locked' }];
+        const connectivityTest = body.purpose === 'connectivity_test';
+        if (body.purpose !== undefined && !['transaction', 'connectivity_test'].includes(body.purpose)) return [400, { error: 'invalid_attempt_scope' }];
         if (!/^[A-Za-z0-9_-]{8,100}$/.test(body.attempt_id || '') ||
             !/^[A-Za-z0-9_-]{8,100}$/.test(body.reservation_id || '') ||
             !/^[A-Za-z0-9_-]{8,64}$/.test(body.expected_reference || '') ||
-            !/^[A-Za-z0-9+ _-]{2,40}$/.test(body.expected_sender || '') ||
+            (connectivityTest ? !/^KHA_TEST_[A-Z0-9_]{8,48}$/.test(body.expected_reference) || body.expected_sender !== undefined :
+                !/^[A-Za-z0-9+ _-]{2,40}$/.test(body.expected_sender || '')) ||
             !Number.isInteger(body.ttl_seconds) || body.ttl_seconds < 1 || body.ttl_seconds > 180) return [400, { error: 'invalid_attempt_scope' }];
         const token = crypto.randomBytes(32).toString('base64url');
         this.active = { id: body.attempt_id, reservation: body.reservation_id,
             reference: body.expected_reference, sender: body.expected_sender,
+            connectivityTest,
             token, expires: this.now() + body.ttl_seconds * 1000,
             digestKey: crypto.randomBytes(32), message: null };
         return [201, { attempt_id: body.attempt_id, reader_token: token,
@@ -146,7 +151,7 @@ class Inbox {
         if (!a || id !== a.id || !equal(token, a.token)) return [403, { error: 'attempt_forbidden' }];
         const result = { attempt_id: a.id, slot: 2, source: 'goip_udp',
             received: !!a.receivedAt && !a.ambiguous && !a.expired && !a.consumed,
-            correlation: a.receivedAt ? 'external_reference_and_sender' : 'not_established',
+            correlation: a.receivedAt ? (a.connectivityTest ? 'diagnostic_marker' : 'external_reference_and_sender') : 'not_established',
             ambiguous: !!a.ambiguous, expired: !!a.expired, consumed: !!a.consumed,
             bank_accepted: false, financial_success: false };
         if (result.received) { result.event_id = a.eventId; result.received_at = a.receivedAt; }
