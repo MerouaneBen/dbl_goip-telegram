@@ -1,0 +1,93 @@
+{
+  "scope": "live_personal_sms_connectivity_test_without_payment",
+  "marker": "KHA_TEST_18B7D401",
+  "sms_sent_by_owner": true,
+  "owner_screenshot_indicates_sms_mode": true,
+  "sender_filter": false,
+  "receiver_code_revision": "f7a230a8cba8de6fcc8c5204f25b03b0ec4cbd2e",
+  "receiver_image": "sha256:679641ecd729fefc63c9dddab58c1356570cab3fe037da7aae99703f4af3672a",
+  "native_client": {
+    "started_at": "2026-10-18T15:05:36.623490+00:00",
+    "source_revision": "45ac8ff95822ed950f982ed207e55c559f5e455c",
+    "native_binary_sha256": "e7e67a1c86eb1421ab9b5670cca5c2624d87ca0158c741a037414b80840631b3",
+    "receiver_code_revision": "f7a230a8cba8de6fcc8c5204f25b03b0ec4cbd2e",
+    "worker_image": "sha256:f6fbf074bcdb2a683845e24568463136cbe52807edfe1dc6744e1f807115c94e",
+    "scope": "manual_nonfinancial_qualification",
+    "bank_sms_requested": false,
+    "native_client_exit_code": 0,
+    "receipt": {
+      "attempt_id": "personal-sms-fanout-test",
+      "slot": 2,
+      "source": "goip_udp",
+      "received": true,
+      "correlation": "diagnostic_marker",
+      "ambiguous": false,
+      "expired": false,
+      "consumed": false,
+      "bank_accepted": false,
+      "financial_success": false,
+      "event_id": "370ce6c6-a9d4-4814-bdfb-83ced86d7be0",
+      "received_at": "2026-10-18T15:08:00.923Z"
+    },
+    "real_personal_sms_received": true,
+    "wrong_reader_refused": true,
+    "transaction_client_refused_diagnostic": true,
+    "qualification_reservation_closed": true,
+    "checked_at": "2026-10-18T15:08:14.970314+00:00"
+  },
+  "after_test_private_https_from_pi4": {
+    "checked_at": "2026-10-18T15:09:27.721616+00:00",
+    "client_host": "mbrpi4dz",
+    "architecture": "aarch64",
+    "tls_certificate_verified": true,
+    "certificate_sha256": "ac2e1cfd3030e45eecbe0180fdf41c32a31d4253362effd169ae7af29eda5e4f",
+    "authenticated_status": 200,
+    "anonymous_status": 403,
+    "wrong_credential_status": 403,
+    "state": "idle",
+    "protected_slot": 2,
+    "last_authenticated_slot2_heartbeat_at": "2026-10-18T15:09:17.927Z",
+    "heartbeat_age_seconds": 9.794616,
+    "counters": {
+      "protected_sms": 3,
+      "rejected_packets": 0,
+      "duplicates": 0,
+      "inbox_errors": 0
+    },
+    "durable_channel_reservation": false,
+    "financial_success": false
+  },
+  "telegram": {
+    "previous_two_sms_received_confirmed_by_owner": true,
+    "current_marker_owner_confirmation": "visible_confirmed_by_owner",
+    "current_marker_api_delivery_ack_instrumented": false,
+    "errors": {
+      "fixed_error_counts": {
+        "telegram_delivery_failed": 0,
+        "telegram_transport_unavailable": 0,
+        "telegram_handler_failed": 0,
+        "udp_packet_rejected": 0,
+        "private_sms_listener_failed": 0
+      },
+      "log_read_success": true
+    },
+    "owner_confirmation_recorded_at_utc": "2026-10-18T15:11:42.958113+00:00"
+  },
+  "results": {
+    "real_sms_received_by_native_worker": true,
+    "same_marker_visible_in_telegram": true,
+    "wrong_reader_refused": true,
+    "transaction_client_refuses_diagnostic": true,
+    "reservation_closed": true,
+    "bank_otp_requested": false,
+    "otp_submitted": false,
+    "financial_success": false,
+    "live_fanout_passed": true
+  },
+  "limits": [
+    "The native client reads receipt metadata only, not the SMS body.",
+    "The marker is a nonbanking connectivity message, not an OTP.",
+    "This test does not validate a payment, provider journey or bank SMS correlation.",
+    "Personal Telegram forwarding has no qualified durable outbox/retry."
+  ]
+}

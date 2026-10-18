@@ -3,6 +3,7 @@ const { Telegraf } = require('telegraf');
 const sha1 = require('sha1');
 const axios = require('axios');
 require('dotenv').config();
+const privateSms = require('./components/core/private-sms-inbox').fromEnvironment(process.env);
 const bot = new Telegraf(process.env.bottoken);
 // db connections /////////////////////////////
 const redis = require('./components/db/redis').getConnection();
@@ -29,7 +30,7 @@ async function messageTransmit(msgdata) {
                 `${locale.channel}: ${channelinfo.name}\n` +
                 `${locale.simnumber}: ${channelinfo.phonenum}\n` +
                 `${locale.fromnumber}: ${msgdata.srcnum}\n\n${msgdata.message}`
-            );
+            ).catch(() => console.log("telegram_delivery_failed"));
         } else {
             clearInterval(interval);
         }
@@ -47,17 +48,16 @@ server.on('error', function (error) {
 });
 
 server.on('message', async function (msg, info) {
-    if(process.env.debug) {
-        console.log(msg?.toString());
-    }
-    let data = msg?.toString()?.split(';');
+    // One authenticated UDP ingress: copy matching slot-2 SMS to the private
+    // inbox, then keep personal Redis/Telegram forwarding. Never log packets.
+    if (privateSms.ingress ? await privateSms.ingress(msg, info) : privateSms.intercept(msg, info)) return;
+    const text = msg.toString();
+    const boundary = text.indexOf(';msg:');
+    // SMS body is opaque: semicolons/newlines must not become gateway headers.
+    let data = (boundary < 0 ? text : text.slice(0, boundary)).split(';');
     let itemscount = data?.length;
     let msginfo = {};
-    let message = msg?.toString()?.match(/msg:.*/g);
-
-    if(message?.length > 0) {
-        msginfo.message = message[0].replace('msg:', '');
-    }
+    if (boundary >= 0) msginfo.message = text.slice(boundary + 5);
 
     for (let m = 0; m < itemscount; m++) {
         let item = data[m].split(':');
@@ -105,16 +105,17 @@ server.on('message', async function (msg, info) {
         }
     }
 
-    let request_result = JSON.stringify(msginfo);
-
     if(process.env.goip_password === msginfo.password) {
+        // Preserve the personal SMS history without persisting the GoIP secret.
+        delete msginfo.password;
+        let request_result = JSON.stringify(msginfo);
         if(msginfo.type === 'req') {
             redis.set(`channel_status${msginfo.id}`, request_result);
         } else {
             let hash = sha1(request_result);
             
             if(!await redis.exists(hash) && msginfo?.message) {
-                messageTransmit(msginfo);
+                messageTransmit(msginfo).catch(() => console.log("telegram_delivery_failed"));
             }
 
             if(process.env.persist_msg) {
@@ -125,7 +126,7 @@ server.on('message', async function (msg, info) {
         }
     } else {
         if(process.env.debug) {
-            console.log('unauth message', msginfo);
+            console.log('udp_packet_rejected');
         }
     }
 });
@@ -478,9 +479,9 @@ bot.on('text', async (ctx) => {
     }
 });
 
-bot.catch((err, ctx) => {
-    console.log(err, ctx);
-    process.exit(1);
+bot.catch(() => {
+    // A Telegram command failure must not terminate the private UDP inbox.
+    console.log('telegram_handler_failed');
 })
 
 if(!process.env.goip_password || !process.env.bottoken || !process.env.admin_username) {
@@ -488,4 +489,24 @@ if(!process.env.goip_password || !process.env.bottoken || !process.env.admin_use
     process.exit(0);
 }
 
-bot.launch();
+let telegramRetryDelay = 5000;
+function startTelegram() {
+    bot.launch().catch(error => {
+        console.log('telegram_transport_unavailable');
+        const apiCode = error?.response?.error_code;
+        const retryAfter = error?.response?.parameters?.retry_after;
+        const delay = Number.isInteger(retryAfter) && retryAfter > 0 && retryAfter <= 3600 ? Math.max(telegramRetryDelay, retryAfter * 1000) : telegramRetryDelay;
+        const permanent = apiCode === 401 || apiCode === 403;
+        const networkCode = ['EAI_AGAIN', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ECONNABORTED'].includes(error?.code) ? error.code : null;
+        // Numeric/allowlisted diagnostics only: no URL/token/description/stack.
+        console.log('telegram_transport_metadata', JSON.stringify({
+            api_code: Number.isInteger(apiCode) ? apiCode : null,
+            network_code: networkCode, retry_in_ms: permanent ? null : delay
+        }));
+        if (permanent) return;
+        const timer = setTimeout(startTelegram, delay);
+        timer.unref();
+        telegramRetryDelay = Math.min(telegramRetryDelay * 2, 60000);
+    });
+}
+startTelegram();

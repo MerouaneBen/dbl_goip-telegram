@@ -1,0 +1,14 @@
+services:
+  app:
+    image: ${KHALLASLI_SMS_IMAGE:?immutable local image required}
+    environment:
+      KHALLASLI_SMS_ENABLED: "1"
+      KHALLASLI_OTP_OBSERVATION_ENABLED: "1"
+      KHALLASLI_OTP_JOURNAL_KEY_FILE: /run/khallasli-sms/otp-journal.key
+      KHALLASLI_SMS_TOKEN_FILE: /run/khallasli-sms/control-token
+      KHALLASLI_SMS_TLS_KEY_FILE: /run/khallasli-sms/tls.key
+      KHALLASLI_SMS_TLS_CERT_FILE: /run/khallasli-sms/tls.crt
+    volumes:
+      - ${KHALLASLI_SMS_CONFIG_DIR:?private configuration directory required}:/run/khallasli-sms:ro
+    ports:
+      - "${KHALLASLI_SMS_BIND_ADDRESS:?Tailscale IP required}:9443:8443/tcp"
