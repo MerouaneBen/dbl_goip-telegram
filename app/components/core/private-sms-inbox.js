@@ -27,7 +27,8 @@ function packet(buffer) {
     }
     if (!/^(?:goip)?[1-4]$/.test(fields.id || '')) return null;
     if (fields.password && fields.pass) return null;
-    if (fields.RECEIVE && fields.req) return null;
+    if (Object.hasOwn(fields, 'RECEIVE') && Object.hasOwn(fields, 'req')) return null;
+    if (Object.hasOwn(fields, 'req') && boundary >= 0) return null;
     return { slot: Number(fields.id.replace(/^goip/, '')), password: fields.password || fields.pass,
         receiveId: fields.RECEIVE, heartbeat: Object.hasOwn(fields, 'req'),
         sender: fields.srcnum, content: boundary < 0 ? null : text.slice(boundary + 5) };
@@ -185,9 +186,12 @@ function handler(inbox) {
 }
 
 function fromEnvironment(env) {
-    if (env.KHALLASLI_SMS_ENABLED !== '1') return { intercept: () => false };
+    const enabled = env.KHALLASLI_SMS_ENABLED === '1';
     const inbox = new Inbox({ password: env.goip_password, gateway: env.goip_host,
-        controlToken: fs.readFileSync(env.KHALLASLI_SMS_TOKEN_FILE, 'utf8').trim() });
+        controlToken: enabled ? fs.readFileSync(env.KHALLASLI_SMS_TOKEN_FILE, 'utf8').trim() : crypto.randomBytes(32).toString('hex') });
+    // Missing API configuration must never restore slot-2 Telegram/Redis
+    // forwarding. Keep the privacy hook active and unarmed without a listener.
+    if (!enabled) return inbox;
     const server = https.createServer({ minVersion: 'TLSv1.2',
         key: fs.readFileSync(env.KHALLASLI_SMS_TLS_KEY_FILE),
         cert: fs.readFileSync(env.KHALLASLI_SMS_TLS_CERT_FILE) }, handler(inbox));

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const dgram = require('node:dgram');
 const http = require('node:http');
 const { once } = require('node:events');
-const { Inbox, packet, handler } = require('../components/core/private-sms-inbox');
+const { Inbox, packet, handler, fromEnvironment } = require('../components/core/private-sms-inbox');
 const PASSWORD = 'SYNTHETIC_GATEWAY_PASSWORD', TOKEN = 'SYNTHETIC_CONTROL_TOKEN_NOT_A_REAL_CREDENTIAL';
 function setup(t) {
     let time = Date.now();
@@ -127,4 +127,16 @@ test('actual isolated UDP socket routes a fixture packet before any legacy consu
     const [ack] = await acknowledged;
     assert.equal(ack.toString(), 'RECEIVE 11111 OK'); assert.equal(legacy, 0);
     assert.equal(inbox.receipt(scope.attempt_id, lease.reader_token)[1].received, true);
+});
+
+
+test('missing API enablement keeps slot 2 private; heartbeat-shaped SMS cannot escape', t => {
+    const inbox = fromEnvironment({ goip_password: PASSWORD, goip_host: '192.0.2.8' });
+    t.after(() => inbox.close());
+    assert.equal(inbox.intercept(sms(), SOURCE, () => {}), true);
+    assert.equal(inbox.intercept(sms({ slot: 1 }), SOURCE, () => {}), false);
+    for (const text of [`req:1;id:goip2;pass:${PASSWORD};msg:SYNTHETIC_SMS`, `RECEIVE:;req:1;id:goip2;pass:${PASSWORD};msg:SYNTHETIC_SMS`]) {
+        assert.equal(inbox.intercept(Buffer.from(text), SOURCE, () => {}), true);
+    }
+    assert.equal(inbox.health().state, 'unarmed');
 });
