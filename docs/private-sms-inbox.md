@@ -191,3 +191,25 @@ or polling health. The original personal SMS forwarding still has no durable
 retry/outbox; startup reconnection does not recover a prior undelivered SMS.
 Redis/Watchtower, Asterisk, GoIP configuration and private credentials remain
 preserved. No outbound SMS/USSD/call or payment is used as a probe.
+
+
+## Live native worker receipt — 18 October, 15:08 UTC
+
+[Live receipt evidence](sms-connectivity-live-2026-10-18.json) supersedes the
+missing-receipt result of the earlier window: the owner sends the new marker
+`KHA_TEST_18B7D401` as an actual SMS. At **15:08:00.923 UTC**, the Pi 4 native Go
+client reads `received=true`, `correlation=diagnostic_marker` through private
+HTTPS from Pi 3, with no sender filter. Wrong-reader access is refused, the
+ordinary transaction client rejects this diagnostic receipt, and the temporary
+test reservation is explicitly closed. No body, banking OTP or payment is
+read/submitted by this metadata client.
+
+The owner confirms this same new marker visible in Telegram, as well as the
+two preceding SMS. **Live fan-out passes: the same actual SMS reaches the native
+worker receipt client and the personal Telegram recipient.** Zero fixed
+delivery/transport errors are observed; the Telegram delivery evidence is the
+owner confirmation, not a fabricated API acknowledgment. At 15:09:27 UTC the receiver is idle with three authenticated
+slot-2 SMS packets, zero rejects/copy errors, valid HTTPS/authorization and a
+fresh authenticated heartbeat. No service restart or code change was needed
+for this live test. The previous absence of SMS in the initial window remains
+a historical observation, not a current worker-receipt failure.
