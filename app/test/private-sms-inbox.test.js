@@ -140,3 +140,40 @@ test('missing API enablement keeps slot 2 private; heartbeat-shaped SMS cannot e
     }
     assert.equal(inbox.health().state, 'unarmed');
 });
+
+test('actual receiver hook survives Telegram failures and never logs a protected packet', async t => {
+    const vm = require('node:vm'), fs = require('node:fs'), { EventEmitter } = require('node:events');
+    const { inbox } = setup(t);
+    const udp = new EventEmitter(); let acks = 0, exits = 0, instance;
+    udp.bind = () => {}; udp.send = () => acks++;
+    const output = [], intervals = [];
+    class Bot {
+        constructor() { instance = this; this.telegram = { sendMessage: () => Promise.reject(Error('SYNTHETIC_TELEGRAM_FAILURE')) }; }
+        command() {} on() {} start() {} catch(fn) { this.failure = fn; }
+        launch() { return Promise.reject(Error('SYNTHETIC_TELEGRAM_FAILURE')); }
+    }
+    const redis = { hkeys: async () => ['fixture-recipient'], hget: async () => null };
+    const imports = {
+        dgram: { createSocket: () => udp }, telegraf: { Telegraf: Bot }, sha1: () => '', axios: {},
+        dotenv: { config: () => {} }, './components/db/redis': { getConnection: () => redis },
+        './components/ui/locale': { getLocale: () => ({}) }, './components/core/functions': {},
+        './components/core/private-sms-inbox': { fromEnvironment: () => inbox }
+    };
+    const context = vm.createContext({ require: name => { if (!(name in imports)) throw Error('unexpected import'); return imports[name]; },
+        Buffer, process: { env: { goip_password: PASSWORD, bottoken: 'SYNTHETIC_BOT_TOKEN', admin_username: 'fixture', debug: '1' }, exit: () => exits++ },
+        console: { log: (...v) => output.push(v.join(' ')) },
+        setInterval: fn => { intervals.push(fn); return 1; }, clearInterval: () => {} });
+    vm.runInContext(fs.readFileSync(require.resolve('../sms_server.js'), 'utf8'), context);
+    await new Promise(resolve => setImmediate(resolve));
+    instance.failure(Error('SYNTHETIC_CONTEXT_SECRET'), { message: '654321' });
+    udp.emit('message', sms(), SOURCE);
+    await context.messageTransmit({ id: '1', srcnum: 'fixture', message: 'SYNTHETIC_OTHER_SLOT_MESSAGE' });
+    intervals[0](); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(exits, 0); assert.equal(acks, 1);
+    assert.ok(output.includes('telegram_transport_unavailable'));
+    assert.ok(output.includes('telegram_handler_failed'));
+    assert.ok(output.includes('telegram_delivery_failed'));
+    assert.equal(output.join(' ').includes('654321'), false);
+    assert.equal(output.join(' ').includes(PASSWORD), false);
+    assert.equal(output.join(' ').includes('SYNTHETIC_CONTEXT_SECRET'), false);
+});
