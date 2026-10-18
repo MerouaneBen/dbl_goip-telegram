@@ -325,3 +325,31 @@ test('Telegram recovery respects rate-limit delays and stops retrying refused cr
         assert.equal(h.output.join(' ').includes('SYNTHETIC_SECRET'), false);
     }
 });
+
+test('actual receiver waits for observation persistence before its one ACK and personal forwarding', async t => {
+    const { inbox } = setup(t);
+    let release;
+    const persisted = new Promise(resolve => { release = resolve; });
+    inbox.observations = { failed: false, ingest: async () => persisted };
+    const h = receiverHarness(inbox);
+    const delivering = h.deliver(sms());
+    await h.flush();
+    assert.equal(h.acks.length, 0);
+    assert.equal(h.sent.length, 0);
+    release();
+    await delivering;
+    assert.equal(h.acks.length, 1);
+    assert.equal(h.sent.length, 1);
+});
+
+test('observation journal failure preserves the personal receiver and masks the error', async t => {
+    const { inbox } = setup(t);
+    inbox.observations = { failed: false, ingest: async () => { throw Error('SYNTHETIC_JOURNAL_SECRET'); } };
+    const h = receiverHarness(inbox);
+    await h.deliver(sms());
+    assert.equal(inbox.observations.failed, true);
+    assert.equal(inbox.health().counters.inbox_errors, 1);
+    assert.equal(h.acks.length, 1);
+    assert.equal(h.sent.length, 1);
+    assert.equal(h.output.join(' ').includes('SYNTHETIC_JOURNAL_SECRET'), false);
+});

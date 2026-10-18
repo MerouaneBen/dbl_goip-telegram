@@ -50,7 +50,7 @@ server.on('error', function (error) {
 server.on('message', async function (msg, info) {
     // One authenticated UDP ingress: copy matching slot-2 SMS to the private
     // inbox, then keep personal Redis/Telegram forwarding. Never log packets.
-    if (privateSms.intercept(msg, info)) return;
+    if (privateSms.ingress ? await privateSms.ingress(msg, info) : privateSms.intercept(msg, info)) return;
     const text = msg.toString();
     const boundary = text.indexOf(';msg:');
     // SMS body is opaque: semicolons/newlines must not become gateway headers.

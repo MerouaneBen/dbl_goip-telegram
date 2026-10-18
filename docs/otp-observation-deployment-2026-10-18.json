@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-18",
+  "image_id": "sha256:0b789151185a301ae13576ddb348718b9c74cad7d64b1fff901aef27297758cc",
+  "rollback_image_id": "sha256:679641ecd729fefc63c9dddab58c1356570cab3fe037da7aae99703f4af3672a",
+  "app_replaced_at": "2026-10-18T23:30:44.068024692Z",
+  "redis_started_at": "2026-10-17T01:40:03.466502492Z",
+  "watchtower_started_at": "2026-10-17T01:40:03.35930744Z",
+  "tests": {
+    "local": 29,
+    "exact_deployed_image_with_read_only_test_mount": 29,
+    "network": "none",
+    "redis_encrypted_replay_ack_close_fsync": "PASS"
+  },
+  "actual_vm_dry_run": {
+    "provider": "mobilis",
+    "amount_dzd": 100,
+    "received_at": "2026-10-18T23:44:51.031Z",
+    "event_id": "df12225f-bc35-49fa-9206-fd50ac031a42",
+    "code_present": true,
+    "code_exported": false,
+    "transaction_correlated": false,
+    "bank_accepted": false,
+    "financial_success": false,
+    "request_to_observation_ack_ms": 4446,
+    "relay_to_client_ms": 158,
+    "total_including_vault_ms": 50109,
+    "journal_closed": true,
+    "telegram_personal_path_preserved": true,
+    "telegram_delivery_for_this_sms_independently_verified": false
+  },
+  "certificate_expires": "2026-11-17T13:24:51Z",
+  "durable_financial_channel_reservation": false
+}

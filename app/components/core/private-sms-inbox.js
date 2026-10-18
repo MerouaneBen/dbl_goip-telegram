@@ -1,7 +1,7 @@
 'use strict';
 
 // One authenticated ingress, with an attempt-scoped copy before personal
-// Redis/Telegram forwarding. The inbox itself has no disk persistence.
+// Redis/Telegram forwarding. V1 is volatile; opt-in V2 uses an encrypted TTL journal.
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const https = require('node:https');
@@ -86,6 +86,15 @@ class Inbox {
         }
         return false;
     }
+    async ingress(buffer, info) {
+        const rejected = this.intercept(buffer, info);
+        if (!rejected && this.observations) {
+            try { await this.observations.ingest(packet(buffer)); }
+            catch { this.observations.failed = true; this.counter.inbox_errors++; }
+        }
+        // Observation failure never suppresses the independent personal path.
+        return rejected;
+    }
     capture(buffer, p) {
         this.prune();
         const a = this.active;
@@ -114,7 +123,7 @@ class Inbox {
         return { service: 'khallasli-private-sms', boot_id: this.bootId, protected_slot: 2,
             state: !this.armed ? 'unarmed' : !a ? 'idle' : a.expired ? 'expired_locked' : a.ambiguous ? 'ambiguous_locked' : a.consumed ? 'consumed_locked' : a.receivedAt ? 'received' : 'waiting',
             last_slot2_heartbeat_at: this.lastHeartbeat, counters: { ...this.counter },
-            durable_channel_reservation: false, financial_success: false };
+            durable_channel_reservation: false, financial_success: false, otp_observation_enabled: !!this.observations, otp_observation_failed: !!this.observations?.failed };
     }
     clear(body) {
         // Control-plane clearance is an explicit external decision. The
@@ -177,6 +186,33 @@ function handler(inbox) {
         try {
             const token = (req.headers.authorization || '').replace(/^Bearer /, '');
             if (req.url === '/health' && req.method === 'GET' && equal(token, inbox.controlToken)) return json(res, 200, inbox.health());
+            if (inbox.observations && (req.url || '').startsWith('/v2/observations')) {
+                const observed = /^\/v2\/observations(?:\/([A-Za-z0-9_-]{8,100})\/(event|ack|close))?$/.exec(req.url);
+                if (!observed) return json(res, 404, { error: 'route_not_found' });
+                if (observed[2] === 'event' && req.method === 'GET') {
+                    const cancel = new AbortController(); res.on('close', () => cancel.abort());
+                    try {
+                        const [status, body] = await inbox.observations.event(observed[1], token, 5000, cancel.signal);
+                        if (!res.destroyed) json(res, status, body);
+                    } catch { if (!res.destroyed) json(res, 503, { error: 'observation_unavailable' }); }
+                    return;
+                }
+                const isAck = observed[2] === 'ack';
+                if ((!isAck && !equal(token, inbox.controlToken)) || req.method !== 'POST') return json(res, 403, { error: 'forbidden' });
+                let data = [], size = 0;
+                for await (const chunk of req) { size += chunk.length; if (size > 2048) return json(res, 413, { error: 'body_too_large' }); data.push(chunk); }
+                const body = JSON.parse(Buffer.concat(data).toString('utf8'));
+                if (!body || Array.isArray(body) || typeof body !== 'object') return json(res, 400, { error: 'invalid_json' });
+                if (!observed[1] && (inbox.active || inbox.observationBeginning)) return json(res, 409, { error: 'legacy_attempt_locked' });
+                let result;
+                try {
+                    if (!observed[1]) inbox.observationBeginning = true;
+                    result = isAck ? await inbox.observations.ack(observed[1], token, body.event_id) :
+                        observed[2] === 'close' ? await inbox.observations.close(observed[1]) : await inbox.observations.begin(body);
+                } catch { return json(res, 503, { error: 'observation_unavailable' }); }
+                finally { if (!observed[1]) inbox.observationBeginning = false; }
+                return json(res, result[0], result[1]);
+            }
             const match = /^\/v1\/attempts\/([A-Za-z0-9_-]{8,100})\/(receipt|consume)$/.exec(req.url || '');
             if (match && ((match[2] === 'receipt' && req.method === 'GET') || (match[2] === 'consume' && req.method === 'POST'))) {
                 const [status, body] = inbox.receipt(match[1], token, match[2] === 'consume');
@@ -192,6 +228,7 @@ function handler(inbox) {
             }
             const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
             if (!body || Array.isArray(body) || typeof body !== 'object') return json(res, 400, { error: 'invalid_json' });
+            if (req.url === '/v1/attempts' && inbox.observations && (inbox.observationBeginning || await inbox.observations.locked() || inbox.observationBeginning)) return json(res, 409, { error: 'observation_locked' });
             const [status, result] = req.url === '/v1/control/clear' ? inbox.clear(body) : inbox.begin(body);
             return json(res, status, result);
         } catch { if (!res.headersSent) json(res, 400, { error: 'invalid_request' }); }
@@ -205,6 +242,11 @@ function fromEnvironment(env) {
     // Personal forwarding is independent of the worker API. Without an API
     // listener the inbox remains unarmed, while valid SMS still reach Telegram.
     if (!enabled) return inbox;
+    if (env.KHALLASLI_OTP_OBSERVATION_ENABLED === '1') {
+        const { ObservationJournal } = require('./otp-observation');
+        const redis = require('../db/redis').getConnection();
+        inbox.observations = new ObservationJournal({ redis, key: fs.readFileSync(env.KHALLASLI_OTP_JOURNAL_KEY_FILE) });
+    }
     const server = https.createServer({ minVersion: 'TLSv1.2',
         key: fs.readFileSync(env.KHALLASLI_SMS_TLS_KEY_FILE),
         cert: fs.readFileSync(env.KHALLASLI_SMS_TLS_CERT_FILE) }, handler(inbox));

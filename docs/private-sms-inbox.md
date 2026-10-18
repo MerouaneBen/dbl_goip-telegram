@@ -213,3 +213,64 @@ slot-2 SMS packets, zero rejects/copy errors, valid HTTPS/authorization and a
 fresh authenticated heartbeat. No service restart or code change was needed
 for this live test. The previous absence of SMS in the initial window remains
 a historical observation, not a current worker-receipt failure.
+
+
+## VM dry-run OTP observation — 18 October 2026
+
+The owner authorized a dedicated VM browser to request a bank SMS and stop
+**without entering or submitting its code**. The opt-in `/v2/observations`
+protocol is separate from the V1 transaction-reference API: it observes a
+qualified candidate; it never claims bank transaction correlation or acceptance.
+
+The authenticated ingress awaits an encrypted Redis journal write and
+`WAITAOF 1 0 1500` before the existing personal path sends its one UDP ACK.
+The journal uses AES-256-GCM with a separate root-owned 32-byte key, fresh nonce,
+authenticated metadata and a 5–180 second TTL. Existing personal Redis/Telegram
+copies remain intentional and independent. A private-copy failure marks health
+failed and preserves personal forwarding. Redis must support WAITAOF (7.2+);
+the tested Pi has Redis 8.10.2 with AOF enabled.
+
+Enable only after provisioning `otp-journal.key` outside Git (root 0600), under
+the existing private read-only configuration mount. Set
+`KHALLASLI_OTP_OBSERVATION_ENABLED=1` and
+`KHALLASLI_OTP_JOURNAL_KEY_FILE=/run/khallasli-sms/otp-journal.key`.
+The Compose overlay records these paths without any key value.
+
+Control capability creates one `POST /v2/observations` with `attempt_id`,
+`reservation_id`, `provider`, `amount_dzd:100`, `ttl_seconds` and `dry_run:true`.
+Other amounts, live mode and unknown providers are refused. This is a trial
+constraint, not the product's client-selected amount contract. V1/V2 cannot
+reserve simultaneously. `GET /v2/observations/<id>/event` is a bounded 5-second
+long poll using a new reader capability, not the control token. It replays the
+same event until the reader sends `POST .../ack` with `event_id`. ACK is
+idempotent and removes message/code from the active record. Explicit control
+`POST .../close` deletes the observation; TTL also removes it. Neither action
+releases a central financial reservation, which is not implemented here.
+
+The qualified French Poste template has exactly five digits. Parsing has no
+sender-name dependency; arbitrary text, other slots and historical messages do
+not become candidates. An identical authenticated UDP retransmission is stable;
+a distinct second bank candidate makes the observation ambiguous and prevents
+code delivery. A timestamp, technical GoIP ID or this template does not establish
+bank transaction correlation. All financial/correlation flags remain false.
+
+The native VM client arms before the normal Envoyer click, receives over pinned
+TLS, validates the parser/body/code agreement and ACKs outside the LLM. Reports
+contain only code presence, opaque event ID, timestamps and timing. No code is
+logged, versioned, displayed to the model or submitted to the bank.
+
+[Deployment and actual VM receipt](otp-observation-deployment-2026-10-18.json):
+Mobilis 100 DZD dry run PASS, 50,109 ms including 1Password, worker 27,940 ms,
+SMS request to acknowledged observation 4,446 ms, Pi3-receipt-to-client 158 ms
+(between host clocks, not a latency SLO). The journal was explicitly closed
+and no Chrome worker remained after the run. The actual Telegram delivery of
+this particular SMS was not independently checked; the personal path is
+preserved and covered by tests, with no receiver token given to workers.
+
+Twenty-nine tests pass locally and against the deployed image, with the updated
+test directory mounted read-only and networking disabled. They include actual
+receiver ordering (persist before ACK) and personal-forwarding survival on
+journal failure, encrypted replay, capability separation, ambiguity, ACK and
+expiry. No test SMS/USSD/call or Telegram message is injected by these tests.
+Central durable financial fencing, TLS renewal (current certificate expires
+17 November), and production identity/authorization remain outside this adapter.

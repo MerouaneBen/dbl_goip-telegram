@@ -3,4 +3,5 @@
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 COPY app/components/core/private-sms-inbox.js /usr/src/app/components/core/private-sms-inbox.js
+COPY app/components/core/otp-observation.js /usr/src/app/components/core/otp-observation.js
 COPY app/sms_server.js /usr/src/app/sms_server.js
