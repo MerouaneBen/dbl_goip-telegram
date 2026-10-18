@@ -147,7 +147,7 @@ test('disabled worker API preserves personal forwarding; malformed heartbeat-sha
 
 // Loads the actual receiver, replacing only external transports with fakes.
 // No request is sent to Telegram, Redis or a real GoIP.
-function receiverHarness(inbox, { telegramFails = false, redisFails = false } = {}) {
+function receiverHarness(inbox, { telegramFails = false, redisFails = false, launchError } = {}) {
     const vm = require('node:vm'), fs = require('node:fs'), { EventEmitter } = require('node:events');
     const udp = new EventEmitter(), acks = [], sent = [], stored = [], output = [], intervals = [];
     let exits = 0, instance, launches = 0;
@@ -162,7 +162,7 @@ function receiverHarness(inbox, { telegramFails = false, redisFails = false } = 
             } };
         }
         command() {} on() {} start() {} catch(fn) { this.failure = fn; }
-        launch() { launches++; return telegramFails ? Promise.reject(Object.assign(Error('SYNTHETIC_TELEGRAM_FAILURE'), { code: 'ECONNRESET' })) : Promise.resolve(); }
+        launch() { launches++; return telegramFails ? Promise.reject(launchError || Object.assign(Error('SYNTHETIC_TELEGRAM_FAILURE'), { code: 'ECONNRESET' })) : Promise.resolve(); }
     }
     const redis = {
         hkeys: async key => { if (redisFails) throw Error('SYNTHETIC_REDIS_FAILURE'); return [key + '-recipient']; },
@@ -312,4 +312,16 @@ test('Telegram launch failures retry with bounded backoff and metadata-only erro
     assert.deepEqual(h.timeouts.map(v => v.delay), [5000, 10000, 20000, 40000, 60000, 60000, 60000]);
     assert.ok(h.output.some(v => v.includes('"network_code":"ECONNRESET"')));
     assert.equal(h.output.join(' ').includes('SYNTHETIC_TELEGRAM_FAILURE'), false);
+});
+
+
+test('Telegram recovery respects rate-limit delays and stops retrying refused credentials', async t => {
+    for (const apiCode of [401, 403, 429]) {
+        const { inbox } = setup(t);
+        const launchError = { response: { error_code: apiCode, parameters: { retry_after: 120 } }, message: 'SYNTHETIC_SECRET' };
+        const h = receiverHarness(inbox, { telegramFails: true, launchError }); await h.flush();
+        if (apiCode === 429) assert.equal(h.timeouts[0].delay, 120000);
+        else assert.equal(h.timeouts.length, 0);
+        assert.equal(h.output.join(' ').includes('SYNTHETIC_SECRET'), false);
+    }
 });

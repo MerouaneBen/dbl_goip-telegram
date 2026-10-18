@@ -494,13 +494,17 @@ function startTelegram() {
     bot.launch().catch(error => {
         console.log('telegram_transport_unavailable');
         const apiCode = error?.response?.error_code;
+        const retryAfter = error?.response?.parameters?.retry_after;
+        const delay = Number.isInteger(retryAfter) && retryAfter > 0 && retryAfter <= 3600 ? Math.max(telegramRetryDelay, retryAfter * 1000) : telegramRetryDelay;
+        const permanent = apiCode === 401 || apiCode === 403;
         const networkCode = ['EAI_AGAIN', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ECONNABORTED'].includes(error?.code) ? error.code : null;
         // Numeric/allowlisted diagnostics only: no URL/token/description/stack.
         console.log('telegram_transport_metadata', JSON.stringify({
             api_code: Number.isInteger(apiCode) ? apiCode : null,
-            network_code: networkCode, retry_in_ms: telegramRetryDelay
+            network_code: networkCode, retry_in_ms: permanent ? null : delay
         }));
-        const timer = setTimeout(startTelegram, telegramRetryDelay);
+        if (permanent) return;
+        const timer = setTimeout(startTelegram, delay);
         timer.unref();
         telegramRetryDelay = Math.min(telegramRetryDelay * 2, 60000);
     });
