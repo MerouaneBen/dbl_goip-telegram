@@ -489,4 +489,20 @@ if(!process.env.goip_password || !process.env.bottoken || !process.env.admin_use
     process.exit(0);
 }
 
-bot.launch().catch(() => console.log('telegram_transport_unavailable'));
+let telegramRetryDelay = 5000;
+function startTelegram() {
+    bot.launch().catch(error => {
+        console.log('telegram_transport_unavailable');
+        const apiCode = error?.response?.error_code;
+        const networkCode = ['EAI_AGAIN', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ECONNABORTED'].includes(error?.code) ? error.code : null;
+        // Numeric/allowlisted diagnostics only: no URL/token/description/stack.
+        console.log('telegram_transport_metadata', JSON.stringify({
+            api_code: Number.isInteger(apiCode) ? apiCode : null,
+            network_code: networkCode, retry_in_ms: telegramRetryDelay
+        }));
+        const timer = setTimeout(startTelegram, telegramRetryDelay);
+        timer.unref();
+        telegramRetryDelay = Math.min(telegramRetryDelay * 2, 60000);
+    });
+}
+startTelegram();

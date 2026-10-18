@@ -150,7 +150,8 @@ test('disabled worker API preserves personal forwarding; malformed heartbeat-sha
 function receiverHarness(inbox, { telegramFails = false, redisFails = false } = {}) {
     const vm = require('node:vm'), fs = require('node:fs'), { EventEmitter } = require('node:events');
     const udp = new EventEmitter(), acks = [], sent = [], stored = [], output = [], intervals = [];
-    let exits = 0, instance;
+    let exits = 0, instance, launches = 0;
+    const timeouts = [];
     udp.bind = () => {}; udp.send = ack => acks.push(ack.toString());
     class Bot {
         constructor() {
@@ -161,7 +162,7 @@ function receiverHarness(inbox, { telegramFails = false, redisFails = false } = 
             } };
         }
         command() {} on() {} start() {} catch(fn) { this.failure = fn; }
-        launch() { return telegramFails ? Promise.reject(Error('SYNTHETIC_TELEGRAM_FAILURE')) : Promise.resolve(); }
+        launch() { launches++; return telegramFails ? Promise.reject(Object.assign(Error('SYNTHETIC_TELEGRAM_FAILURE'), { code: 'ECONNRESET' })) : Promise.resolve(); }
     }
     const redis = {
         hkeys: async key => { if (redisFails) throw Error('SYNTHETIC_REDIS_FAILURE'); return [key + '-recipient']; },
@@ -179,7 +180,8 @@ function receiverHarness(inbox, { telegramFails = false, redisFails = false } = 
     const context = vm.createContext({ require: name => { if (!(name in imports)) throw Error('unexpected import'); return imports[name]; },
         Buffer, process: { env: { goip_password: PASSWORD, bottoken: 'SYNTHETIC_BOT_TOKEN', admin_username: 'fixture', debug: '1' }, exit: () => exits++ },
         console: { log: (...v) => output.push(v.join(' ')) },
-        setInterval: fn => { intervals.push(fn); return intervals.length; }, clearInterval: () => {} });
+        setInterval: fn => { intervals.push(fn); return intervals.length; }, clearInterval: () => {},
+        setTimeout: (fn, delay) => { timeouts.push({ fn, delay }); return { unref() {} }; } });
     vm.runInContext(fs.readFileSync(require.resolve('../sms_server.js'), 'utf8'), context);
     const flush = () => new Promise(resolve => setImmediate(resolve));
     const deliver = async buffer => {
@@ -188,7 +190,7 @@ function receiverHarness(inbox, { telegramFails = false, redisFails = false } = 
         for (const fn of intervals.splice(0)) fn();
         await flush();
     };
-    return { deliver, acks, sent, stored, output, get exits() { return exits; }, get bot() { return instance; }, flush };
+    return { deliver, acks, sent, stored, output, get exits() { return exits; }, get bot() { return instance; }, get launches() { return launches; }, timeouts, flush };
 }
 
 test('actual receiver forwards every personal slot-2 SMS in unarmed, unmatched and locked states', async t => {
@@ -297,4 +299,17 @@ test('connectivity scope cannot capture arbitrary text, OTPs or weaken the trans
         inbox.intercept(Buffer.from(`RECEIVE:test;id:goip2;password:${PASSWORD};srcnum:ANY_SENDER;msg:${content}`), SOURCE);
         assert.equal(inbox.receipt(scope.attempt_id, lease.reader_token)[1].received, false);
     }
+});
+
+
+test('Telegram launch failures retry with bounded backoff and metadata-only errors while UDP stays available', async t => {
+    const { inbox } = setup(t); const h = receiverHarness(inbox, { telegramFails: true });
+    await h.flush();
+    assert.equal(h.launches, 1); assert.equal(h.timeouts[0].delay, 5000);
+    await h.deliver(sms({ reference: 'PERSONAL_ALERT' }));
+    assert.equal(h.acks.length, 1); assert.equal(h.sent.length, 1); assert.equal(h.exits, 0);
+    for (let i = 0; i < 6; i++) { h.timeouts[i].fn(); await h.flush(); }
+    assert.deepEqual(h.timeouts.map(v => v.delay), [5000, 10000, 20000, 40000, 60000, 60000, 60000]);
+    assert.ok(h.output.some(v => v.includes('"network_code":"ECONNRESET"')));
+    assert.equal(h.output.join(' ').includes('SYNTHETIC_TELEGRAM_FAILURE'), false);
 });
