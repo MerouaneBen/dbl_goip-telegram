@@ -2,16 +2,27 @@
 
 This change is explicitly requested by Merouane for the Algeria prototype. It
 extends the existing Pi 3 receiver; it does not start a second GoIP UDP listener
-or require each worker to join Telegram. Slot 2 is reserved for Khallasli. API configuration cannot disable the privacy
-hook: without it slot 2 stays unarmed and private.
+or require each worker to join Telegram.
 
-The hook runs before legacy parsing/debug/Redis/Telegram. It authenticates the
-configured gateway IP and GoIP password before processing or acknowledging a
-protected SMS. All slot-2 messages are excluded from the legacy sinks, including
-unmatched messages and messages received while unarmed. Other authenticated slots
-and heartbeats keep their existing handling. Raw UDP packet and rejected-packet
-logging is removed. No Redis records, existing SMS history or Telegram messages
-are read to obtain a bank code.
+**Owner correction, 18 October 2026:** slot 2 is a personal SIM shared with
+Khallasli. All authenticated SMS, including banking OTPs, continue to the
+existing personal Redis/Telegram path and configured recipients. The worker
+receives an additional attempt-scoped copy through the private HTTPS API. It
+never reads Telegram or Redis. The earlier exclusive slot-2 routing is
+superseded; the owner explicitly requests personal visibility of these OTPs.
+
+The hook authenticates gateway IP and GoIP password, then copies only messages
+matching the active attempt. The original path forwards personal alerts,
+unmatched messages, and messages received while unarmed, expired, consumed or
+ambiguous. Only that path sends the single UDP ACK. A worker-copy error locks
+the attempt but does not suppress personal forwarding. A Telegram failure does
+not discard the worker copy. Disabling the worker API leaves personal forwarding
+active. There is still one UDP socket and one Telegram bot.
+
+Raw UDP/debug logging stays removed. SMS bodies are opaque (including newlines
+and header-like text); their text cannot change the recipient slot. New Redis
+records omit the GoIP authentication password, but retain personal SMS content
+under the existing retention setting. Historical records are not modified.
 
 ## Access and one active attempt
 
@@ -40,14 +51,16 @@ expected sender **and an external reference actually present in the SMS**.
 Timestamp or technical GoIP ID alone never matches. Identical UDP retransmission
 is idempotent; a second distinct matching packet makes the attempt ambiguous
 and discards its content. Wrong-source/credential/malformed packets are dropped
-before all legacy sinks. Protected SMS are ACKed after ingress handling, even
-when no matching attempt exists, to prevent fallback/replay through Telegram.
+before all legacy sinks. Accepted SMS continue to the personal path for its ACK
+and forwarding, regardless of whether a worker attempt matches.
 
 `POST /v1/attempts/<id>/consume` is native/deterministic-component only and returns
 one matching message once, outside the model. It zeroes the retained Buffer and
 marks the attempt consumed. TTL also zeroes the Buffer, without freeing the
 channel. JavaScript/OS memory cannot be claimed as cryptographically erased; no
-content is persisted, and no raw response is logged or copied into test reports.
+content is persisted by the private inbox, and no raw API response is logged or
+copied into test reports. The personal Telegram/Redis copy is intentional and
+independent: consuming or expiring the inbox does not delete that copy.
 The service has no code-submission/payment/browser capability.
 
 **Reception is not bank acceptance.** `bank_accepted` and `financial_success`
@@ -70,7 +83,10 @@ prototype adapter, not a complete financial channel manager.
 HTTP loopback and an isolated UDP loopback socket. It verifies early routing,
 wrong source/credentials, other-slot/heartbeat preservation, one attempt,
 references/senders, cross-attempt access, duplicates/ambiguity, expiration,
-consumption, restart lock and separation of control/reader capabilities. It
+consumption, restart lock and separation of control/reader capabilities. The
+actual receiver is also tested with mocked Telegram/Redis: personal delivery in
+all attempt states, one ACK per packet, opaque bodies, copy failure and
+Telegram/recipient failure isolation. It
 sends no SMS/USSD/call and does not contact a real gateway or Telegram.
 
 Build `deploy/Dockerfile.private-sms` **without network** on the exact local
@@ -91,12 +107,19 @@ yet been requested or received by this integration.
 
 Telegram command, send and launch errors now emit fixed metadata only and do
 not terminate the UDP/private-inbox process. The existing app still uses its
-one configured Telegram bot for other slots; workers never use that token or
-join its conversations. Ten inbox tests pass locally and on the exact Pi 3 image, including the actual
-receiver source with simulated Telegram failures.
+one configured Telegram bot for all personal slots, including slot 2; workers never use that token or
+join its conversations. Fourteen inbox/receiver tests pass locally. Exact-image results and remote
+verification for the correction are recorded separately after deployment.
+The inherited personal Telegram path remains best effort: its ACK precedes
+durable delivery, its legacy Redis deduplication is not a delivery guarantee,
+and it has no durable Telegram retry/outbox. This change restores forwarding;
+it does not claim recovery of SMS suppressed by the previous exclusive route.
 
 
-## Delivery evidence — 18 October 2026
+## Historical exclusive-routing delivery — 18 October 2026
+
+This paragraph records the initial deployment, before the personal fan-out
+correction. It is not evidence that the corrected forwarding was tested.
 
 [Sanitized deployment evidence](private-sms-deployment-2026-10-18.json) records
 code revision `3fa42c6`, immutable local image, code hashes, ten tests on Pi 3,

@@ -1,7 +1,7 @@
 'use strict';
 
-// One ingress, before legacy logs/Redis/Telegram. No disk persistence, SMS
-// polling, financial decisions, or broadcast/second GoIP listener.
+// One authenticated ingress, with an attempt-scoped copy before personal
+// Redis/Telegram forwarding. The inbox itself has no disk persistence.
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const https = require('node:https');
@@ -45,7 +45,7 @@ class Inbox {
         this.armed = false;
         this.active = null;
         this.lastHeartbeat = null;
-        this.counter = { protected_sms: 0, rejected_packets: 0, duplicates: 0 };
+        this.counter = { protected_sms: 0, rejected_packets: 0, duplicates: 0, inbox_errors: 0 };
         this.expiry = setInterval(() => this.prune(), 1000);
         this.expiry.unref();
     }
@@ -61,7 +61,9 @@ class Inbox {
             // Expiry removes sensitive bytes, never frees the channel.
         }
     }
-    intercept(buffer, info, acknowledge) {
+    // true rejects the packet; false continues the original personal path.
+    // Only that path ACKs accepted SMS, so there is no second UDP consumer/ACK.
+    intercept(buffer, info) {
         const p = packet(buffer);
         if (!p || info.address.replace(/^::ffff:/, '') !== this.gateway || !equal(p.password, this.password)) {
             this.counter.rejected_packets++;
@@ -72,9 +74,19 @@ class Inbox {
             return false;
         }
         if (p.slot !== 2) return false;
-        // All slot-2 SMS are private, including foreign/unmatched messages.
         if (!p.receiveId || !/^[A-Za-z0-9_-]{1,64}$/.test(p.receiveId) || p.content === null) return true;
         this.counter.protected_sms++;
+        try { this.capture(buffer, p); }
+        catch {
+            // A worker-copy failure must not suppress personal Telegram SMS.
+            // Fail closed for the attempt, without logging message/exception.
+            this.counter.inbox_errors++;
+            this.discard();
+            if (this.active) this.active.ambiguous = true;
+        }
+        return false;
+    }
+    capture(buffer, p) {
         this.prune();
         const a = this.active;
         if (a && !a.expired && !a.consumed) {
@@ -94,10 +106,6 @@ class Inbox {
                 }
             }
         }
-        // Authenticated ingress has handled the packet, including when no
-        // attempt is armed. Never let a retry fall through to the legacy bot.
-        acknowledge(Buffer.from('RECEIVE ' + p.receiveId + ' OK'));
-        return true;
     }
     health() {
         this.prune();
@@ -189,8 +197,8 @@ function fromEnvironment(env) {
     const enabled = env.KHALLASLI_SMS_ENABLED === '1';
     const inbox = new Inbox({ password: env.goip_password, gateway: env.goip_host,
         controlToken: enabled ? fs.readFileSync(env.KHALLASLI_SMS_TOKEN_FILE, 'utf8').trim() : crypto.randomBytes(32).toString('hex') });
-    // Missing API configuration must never restore slot-2 Telegram/Redis
-    // forwarding. Keep the privacy hook active and unarmed without a listener.
+    // Personal forwarding is independent of the worker API. Without an API
+    // listener the inbox remains unarmed, while valid SMS still reach Telegram.
     if (!enabled) return inbox;
     const server = https.createServer({ minVersion: 'TLSv1.2',
         key: fs.readFileSync(env.KHALLASLI_SMS_TLS_KEY_FILE),

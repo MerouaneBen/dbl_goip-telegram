@@ -48,19 +48,16 @@ server.on('error', function (error) {
 });
 
 server.on('message', async function (msg, info) {
-    // This is the only GoIP UDP listener. Sensitive routing happens before
-    // legacy parsing, debug output, Redis and Telegram. Never log packets.
-    if (privateSms.intercept(msg, info, ack => {
-        server.send(ack, info.port, info.address, () => {});
-    })) return;
-    let data = msg?.toString()?.split(';');
+    // One authenticated UDP ingress: copy matching slot-2 SMS to the private
+    // inbox, then keep personal Redis/Telegram forwarding. Never log packets.
+    if (privateSms.intercept(msg, info)) return;
+    const text = msg.toString();
+    const boundary = text.indexOf(';msg:');
+    // SMS body is opaque: semicolons/newlines must not become gateway headers.
+    let data = (boundary < 0 ? text : text.slice(0, boundary)).split(';');
     let itemscount = data?.length;
     let msginfo = {};
-    let message = msg?.toString()?.match(/msg:.*/g);
-
-    if(message?.length > 0) {
-        msginfo.message = message[0].replace('msg:', '');
-    }
+    if (boundary >= 0) msginfo.message = text.slice(boundary + 5);
 
     for (let m = 0; m < itemscount; m++) {
         let item = data[m].split(':');
@@ -108,16 +105,17 @@ server.on('message', async function (msg, info) {
         }
     }
 
-    let request_result = JSON.stringify(msginfo);
-
     if(process.env.goip_password === msginfo.password) {
+        // Preserve the personal SMS history without persisting the GoIP secret.
+        delete msginfo.password;
+        let request_result = JSON.stringify(msginfo);
         if(msginfo.type === 'req') {
             redis.set(`channel_status${msginfo.id}`, request_result);
         } else {
             let hash = sha1(request_result);
             
             if(!await redis.exists(hash) && msginfo?.message) {
-                messageTransmit(msginfo);
+                messageTransmit(msginfo).catch(() => console.log("telegram_delivery_failed"));
             }
 
             if(process.env.persist_msg) {

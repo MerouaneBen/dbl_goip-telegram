@@ -19,10 +19,10 @@ function sms({ slot = 2, id = '11111', sender = 'FIXTURE_BANK', reference = 'REF
 }
 const SOURCE = { address: '192.0.2.8', port: 44444 };
 
-test('sensitive ingress never reaches the legacy sinks, even without an armed attempt', t => {
+test('personal slot-2 forwarding continues without an armed attempt; inbox never ACKs', t => {
     const { inbox } = setup(t); let ack = 0;
-    assert.equal(inbox.intercept(sms(), SOURCE, () => ack++), true);
-    assert.equal(ack, 1);
+    assert.equal(inbox.intercept(sms(), SOURCE, () => ack++), false);
+    assert.equal(ack, 0);
     assert.equal(inbox.active, null);
     assert.equal(inbox.health().state, 'unarmed');
     assert.equal(inbox.intercept(sms({ slot: 1 }), SOURCE, () => {}), false);
@@ -112,7 +112,7 @@ test('HTTP control and reader capabilities are separate; no anonymous metadata o
     assert.equal(receipt[2].received, true); assert.equal(receipt[2].message, undefined);
 });
 
-test('actual isolated UDP socket routes a fixture packet before any legacy consumer', async t => {
+test('one isolated UDP socket copies to the inbox and ACKs once through the personal path', async t => {
     const { inbox, scope, clear } = setup(t); clear(); const lease = inbox.begin(scope)[1];
     // The production source restriction remains enforced in normal tests.
     // This isolated loopback socket has synthetic credentials and no GoIP link.
@@ -121,19 +121,23 @@ test('actual isolated UDP socket routes a fixture packet before any legacy consu
     const receiver = dgram.createSocket('udp4'), sender = dgram.createSocket('udp4');
     receiver.bind(0, '127.0.0.1'); await once(receiver, 'listening');
     t.after(() => { receiver.close(); sender.close(); });
-    receiver.on('message', (data, info) => { if (!inbox.intercept(data, info, ack => receiver.send(ack, info.port, info.address))) legacy++; });
+    receiver.on('message', (data, info) => {
+        if (inbox.intercept(data, info)) return;
+        legacy++;
+        receiver.send(Buffer.from('RECEIVE ' + packet(data).receiveId + ' OK'), info.port, info.address);
+    });
     const acknowledged = once(sender, 'message');
     sender.send(sms(), receiver.address().port, '127.0.0.1');
     const [ack] = await acknowledged;
-    assert.equal(ack.toString(), 'RECEIVE 11111 OK'); assert.equal(legacy, 0);
+    assert.equal(ack.toString(), 'RECEIVE 11111 OK'); assert.equal(legacy, 1);
     assert.equal(inbox.receipt(scope.attempt_id, lease.reader_token)[1].received, true);
 });
 
 
-test('missing API enablement keeps slot 2 private; heartbeat-shaped SMS cannot escape', t => {
+test('disabled worker API preserves personal forwarding; malformed heartbeat-shaped SMS are rejected', t => {
     const inbox = fromEnvironment({ goip_password: PASSWORD, goip_host: '192.0.2.8' });
     t.after(() => inbox.close());
-    assert.equal(inbox.intercept(sms(), SOURCE, () => {}), true);
+    assert.equal(inbox.intercept(sms(), SOURCE, () => {}), false);
     assert.equal(inbox.intercept(sms({ slot: 1 }), SOURCE, () => {}), false);
     for (const text of [`req:1;id:goip2;pass:${PASSWORD};msg:SYNTHETIC_SMS`, `RECEIVE:;req:1;id:goip2;pass:${PASSWORD};msg:SYNTHETIC_SMS`]) {
         assert.equal(inbox.intercept(Buffer.from(text), SOURCE, () => {}), true);
@@ -141,20 +145,33 @@ test('missing API enablement keeps slot 2 private; heartbeat-shaped SMS cannot e
     assert.equal(inbox.health().state, 'unarmed');
 });
 
-test('actual receiver hook survives Telegram failures and never logs a protected packet', async t => {
+// Loads the actual receiver, replacing only external transports with fakes.
+// No request is sent to Telegram, Redis or a real GoIP.
+function receiverHarness(inbox, { telegramFails = false, redisFails = false } = {}) {
     const vm = require('node:vm'), fs = require('node:fs'), { EventEmitter } = require('node:events');
-    const { inbox } = setup(t);
-    const udp = new EventEmitter(); let acks = 0, exits = 0, instance;
-    udp.bind = () => {}; udp.send = () => acks++;
-    const output = [], intervals = [];
+    const udp = new EventEmitter(), acks = [], sent = [], stored = [], output = [], intervals = [];
+    let exits = 0, instance;
+    udp.bind = () => {}; udp.send = ack => acks.push(ack.toString());
     class Bot {
-        constructor() { instance = this; this.telegram = { sendMessage: () => Promise.reject(Error('SYNTHETIC_TELEGRAM_FAILURE')) }; }
+        constructor() {
+            instance = this;
+            this.telegram = { sendMessage: (recipient, text) => {
+                sent.push({ recipient, text });
+                return telegramFails ? Promise.reject(Error('SYNTHETIC_TELEGRAM_FAILURE')) : Promise.resolve();
+            } };
+        }
         command() {} on() {} start() {} catch(fn) { this.failure = fn; }
-        launch() { return Promise.reject(Error('SYNTHETIC_TELEGRAM_FAILURE')); }
+        launch() { return telegramFails ? Promise.reject(Error('SYNTHETIC_TELEGRAM_FAILURE')) : Promise.resolve(); }
     }
-    const redis = { hkeys: async () => ['fixture-recipient'], hget: async () => null };
+    const redis = {
+        hkeys: async key => { if (redisFails) throw Error('SYNTHETIC_REDIS_FAILURE'); return [key + '-recipient']; },
+        hget: async () => null, exists: async () => false,
+        set: async (key, value) => stored.push({ key, value }),
+        setex: async (key, ttl, value) => stored.push({ key, value })
+    };
     const imports = {
-        dgram: { createSocket: () => udp }, telegraf: { Telegraf: Bot }, sha1: () => '', axios: {},
+        dgram: { createSocket: () => udp }, telegraf: { Telegraf: Bot },
+        sha1: value => require('node:crypto').createHash('sha1').update(value).digest('hex'), axios: {},
         dotenv: { config: () => {} }, './components/db/redis': { getConnection: () => redis },
         './components/ui/locale': { getLocale: () => ({}) }, './components/core/functions': {},
         './components/core/private-sms-inbox': { fromEnvironment: () => inbox }
@@ -162,18 +179,89 @@ test('actual receiver hook survives Telegram failures and never logs a protected
     const context = vm.createContext({ require: name => { if (!(name in imports)) throw Error('unexpected import'); return imports[name]; },
         Buffer, process: { env: { goip_password: PASSWORD, bottoken: 'SYNTHETIC_BOT_TOKEN', admin_username: 'fixture', debug: '1' }, exit: () => exits++ },
         console: { log: (...v) => output.push(v.join(' ')) },
-        setInterval: fn => { intervals.push(fn); return 1; }, clearInterval: () => {} });
+        setInterval: fn => { intervals.push(fn); return intervals.length; }, clearInterval: () => {} });
     vm.runInContext(fs.readFileSync(require.resolve('../sms_server.js'), 'utf8'), context);
-    await new Promise(resolve => setImmediate(resolve));
-    instance.failure(Error('SYNTHETIC_CONTEXT_SECRET'), { message: '654321' });
-    udp.emit('message', sms(), SOURCE);
-    await context.messageTransmit({ id: '1', srcnum: 'fixture', message: 'SYNTHETIC_OTHER_SLOT_MESSAGE' });
-    intervals[0](); await new Promise(resolve => setImmediate(resolve));
-    assert.equal(exits, 0); assert.equal(acks, 1);
-    assert.ok(output.includes('telegram_transport_unavailable'));
-    assert.ok(output.includes('telegram_handler_failed'));
-    assert.ok(output.includes('telegram_delivery_failed'));
-    assert.equal(output.join(' ').includes('654321'), false);
-    assert.equal(output.join(' ').includes(PASSWORD), false);
-    assert.equal(output.join(' ').includes('SYNTHETIC_CONTEXT_SECRET'), false);
+    const flush = () => new Promise(resolve => setImmediate(resolve));
+    const deliver = async buffer => {
+        await udp.listeners('message')[0](buffer, SOURCE);
+        await flush();
+        for (const fn of intervals.splice(0)) fn();
+        await flush();
+    };
+    return { deliver, acks, sent, stored, output, get exits() { return exits; }, get bot() { return instance; }, flush };
+}
+
+test('actual receiver forwards every personal slot-2 SMS in unarmed, unmatched and locked states', async t => {
+    const { inbox, scope, clear, tick } = setup(t);
+    const h = receiverHarness(inbox);
+    await h.deliver(sms({ id: 'unarmed', reference: 'PERSONAL_ALERT' }));
+    clear(); const lease = inbox.begin(scope)[1];
+    await h.deliver(sms({ id: 'unmatched', sender: 'PERSONAL_SENDER' }));
+    assert.equal(inbox.receipt(scope.attempt_id, lease.reader_token)[1].received, false);
+    await h.deliver(sms());
+    assert.equal(inbox.receipt(scope.attempt_id, lease.reader_token, true)[0], 200);
+    await h.deliver(sms({ id: 'consumed', reference: 'PERSONAL_ALERT' }));
+    tick(31000);
+    await h.deliver(sms({ id: 'expired' }));
+    clear(); const next = inbox.begin(scope)[1];
+    await h.deliver(sms({ id: 'first' }));
+    await h.deliver(sms({ id: 'conflict', code: '123456' }));
+    assert.equal(inbox.receipt(scope.attempt_id, next.reader_token)[1].ambiguous, true);
+    await h.deliver(sms({ id: 'locked', sender: 'PERSONAL_ALERT' }));
+    assert.equal(h.sent.length, 8);
+    assert.equal(h.acks.length, 8);
+    assert.ok(h.sent.every(m => m.recipient === 'sim2-recipient'));
+    assert.ok(h.sent[2].text.includes('654321'));
+    assert.ok(h.sent[3].text.includes('PERSONAL_ALERT'));
+    assert.ok(h.stored.every(m => !m.value.includes(PASSWORD)));
+    assert.equal(h.output.join(' ').includes('654321'), false);
+});
+
+test('actual receiver preserves opaque SMS bodies; embedded headers cannot change the personal recipient', async t => {
+    const { inbox } = setup(t); const h = receiverHarness(inbox);
+    const body = 'Personal alert\nsecond line;id:goip1;password:fake;srcnum:attacker';
+    await h.deliver(Buffer.from(`RECEIVE:opaque;id:goip2;password:${PASSWORD};srcnum:PERSONAL;msg:${body}`));
+    assert.equal(h.sent.length, 1); assert.equal(h.acks.length, 1);
+    assert.equal(h.sent[0].recipient, 'sim2-recipient');
+    assert.ok(h.sent[0].text.endsWith(body));
+    const persisted = JSON.parse(h.stored[0].value);
+    assert.equal(persisted.id, '2'); assert.equal(persisted.srcnum, 'PERSONAL');
+    assert.equal(persisted.password, undefined);
+    await h.deliver(sms({ password: 'wrong' }));
+    assert.equal(h.sent.length, 1); assert.equal(h.acks.length, 1);
+});
+
+test('worker-copy failure locks the attempt but preserves personal Telegram forwarding', async t => {
+    const { inbox, scope, clear } = setup(t); clear(); const lease = inbox.begin(scope)[1];
+    const h = receiverHarness(inbox);
+    inbox.capture = () => { throw Error('SYNTHETIC_CONTEXT_SECRET'); };
+    await h.deliver(sms());
+    assert.equal(h.sent.length, 1); assert.equal(h.acks.length, 1);
+    assert.equal(inbox.health().state, 'ambiguous_locked');
+    assert.equal(inbox.health().counters.inbox_errors, 1);
+    assert.equal(inbox.receipt(scope.attempt_id, lease.reader_token)[1].received, false);
+    assert.equal(h.output.join(' ').includes('SYNTHETIC_CONTEXT_SECRET'), false);
+});
+
+test('actual receiver survives Telegram failures; the worker still receives its matching SMS', async t => {
+    const { inbox, scope, clear } = setup(t); clear(); const lease = inbox.begin(scope)[1];
+    const h = receiverHarness(inbox, { telegramFails: true }); await h.flush();
+    h.bot.failure(Error('SYNTHETIC_CONTEXT_SECRET'), { message: '654321' });
+    await h.deliver(sms());
+    assert.equal(h.exits, 0); assert.equal(h.acks.length, 1);
+    assert.equal(h.sent.length, 1);
+    assert.equal(inbox.receipt(scope.attempt_id, lease.reader_token)[1].received, true);
+    assert.ok(h.output.includes('telegram_transport_unavailable'));
+    assert.ok(h.output.includes('telegram_handler_failed'));
+    assert.ok(h.output.includes('telegram_delivery_failed'));
+    for (const secret of ['654321', PASSWORD, 'SYNTHETIC_CONTEXT_SECRET']) assert.equal(h.output.join(' ').includes(secret), false);
+});
+
+test('Redis/Telegram recipient failure does not discard the worker copy or crash the receiver', async t => {
+    const { inbox, scope, clear } = setup(t); clear(); const lease = inbox.begin(scope)[1];
+    const h = receiverHarness(inbox, { redisFails: true });
+    await h.deliver(sms());
+    assert.equal(h.exits, 0); assert.equal(h.acks.length, 1);
+    assert.equal(inbox.receipt(scope.attempt_id, lease.reader_token)[1].received, true);
+    assert.ok(h.output.includes('telegram_delivery_failed'));
 });
