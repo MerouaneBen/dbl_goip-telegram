@@ -1,0 +1,6 @@
+# Local Pi qualification overlay: use the exact already-running image.
+# The existing image/configuration may contain secrets: never publish it.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY app/components/core/private-sms-inbox.js /usr/src/app/components/core/private-sms-inbox.js
+COPY app/sms_server.js /usr/src/app/sms_server.js

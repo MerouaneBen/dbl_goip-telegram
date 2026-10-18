@@ -63,3 +63,8 @@ Service for receive and transmit SMS from DBL-GoIP to Telegram
 * /wsms <channel_id> - Send message from telegram to phone number
 
 - You can use test_message.js for testing message transmitting
+
+## Khallasli private SMS ingress
+
+See [slot-2 private HTTPS interface and qualification](docs/private-sms-inbox.md).
+One receiver routes protected SMS before Redis/Telegram; workers need no Telegram onboarding.

@@ -3,6 +3,7 @@ const { Telegraf } = require('telegraf');
 const sha1 = require('sha1');
 const axios = require('axios');
 require('dotenv').config();
+const privateSms = require('./components/core/private-sms-inbox').fromEnvironment(process.env);
 const bot = new Telegraf(process.env.bottoken);
 // db connections /////////////////////////////
 const redis = require('./components/db/redis').getConnection();
@@ -47,9 +48,11 @@ server.on('error', function (error) {
 });
 
 server.on('message', async function (msg, info) {
-    if(process.env.debug) {
-        console.log(msg?.toString());
-    }
+    // This is the only GoIP UDP listener. Sensitive routing happens before
+    // legacy parsing, debug output, Redis and Telegram. Never log packets.
+    if (privateSms.intercept(msg, info, ack => {
+        server.send(ack, info.port, info.address, () => {});
+    })) return;
     let data = msg?.toString()?.split(';');
     let itemscount = data?.length;
     let msginfo = {};
@@ -125,7 +128,7 @@ server.on('message', async function (msg, info) {
         }
     } else {
         if(process.env.debug) {
-            console.log('unauth message', msginfo);
+            console.log('udp_packet_rejected');
         }
     }
 });
@@ -479,7 +482,7 @@ bot.on('text', async (ctx) => {
 });
 
 bot.catch((err, ctx) => {
-    console.log(err, ctx);
+    console.log('telegram_handler_failed');
     process.exit(1);
 })
 
