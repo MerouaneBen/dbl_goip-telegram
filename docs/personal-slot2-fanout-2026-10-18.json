@@ -1,0 +1,109 @@
+{
+  "code_revision": "1f7bbc7816b572c563a24f54812e6abc648b9a29",
+  "scope": "owner_authorized_personal_slot2_fanout_correction",
+  "image_id": "sha256:b2dfe179f3d04059dac29213f730c4e20f45402d22380a91c9680367afb42895",
+  "app_started_at": "2026-10-18T14:06:52.246801844Z",
+  "replaces_image_id": "sha256:12d737419e42205eb8b23c0c11acad7ef1b4ee313bfd2eaeeed344ef393c3961",
+  "receiver_file_sha256": "23cdcc5f76dc382b1423ec36f2de8df8f339fc32755a980d4b6befacc5d8ed24",
+  "private_inbox_file_sha256": "4a97c88f6613c3faed6a1b167aa17de54865883158248793c4ce7186c595c0df",
+  "host_and_container_source_hashes_match": true,
+  "routing": {
+    "slot": 2,
+    "all_authenticated_sms_continue_to_personal_telegram": true,
+    "bank_otp_personal_copy_explicitly_requested": true,
+    "private_worker_copy_requires_sender_and_external_reference": true,
+    "worker_reads_telegram_or_redis": false,
+    "udp_listeners": 1,
+    "ack_owner": "original_personal_receiver",
+    "new_redis_records_omit_gateway_password": true
+  },
+  "tests": {
+    "command": "node --test app/test/private-sms-inbox.test.js",
+    "local_node_tests_passed": 14,
+    "pi3_exact_image_node_tests_passed": 14,
+    "telegram_and_redis_test_transports": "mocked",
+    "udp_test_transport": "isolated_loopback",
+    "live_sms_sent": 0,
+    "bank_otp_requested": 0,
+    "bank_otp_received": 0,
+    "real_payment_submitted": false,
+    "live_sms_to_telegram_end_to_end": "NOT_RUN"
+  },
+  "private_https_from_pi4": {
+    "checked_at": "2026-10-18T14:07:39.722398+00:00",
+    "client_host": "mbrpi4dz",
+    "architecture": "aarch64",
+    "tls_certificate_verified": true,
+    "certificate_sha256": "ac2e1cfd3030e45eecbe0180fdf41c32a31d4253362effd169ae7af29eda5e4f",
+    "authenticated_status": 200,
+    "anonymous_status": 403,
+    "wrong_credential_status": 403,
+    "state": "unarmed",
+    "protected_slot": 2,
+    "last_authenticated_slot2_heartbeat_at": "2026-10-18T14:07:31.303Z",
+    "heartbeat_age_seconds": 8.419398,
+    "counters": {
+      "protected_sms": 0,
+      "rejected_packets": 0,
+      "duplicates": 0,
+      "inbox_errors": 0
+    },
+    "durable_channel_reservation": false,
+    "financial_success": false
+  },
+  "native_worker_client": {
+    "checked_at": "2026-10-18T14:08:04.971615+00:00",
+    "source_revision": "a68c1e09675c9d0e7c92b07e7c0332f4feaceba7",
+    "worker_image": "sha256:f6fbf074bcdb2a683845e24568463136cbe52807edfe1dc6744e1f807115c94e",
+    "scope": "manual_nonfinancial_qualification",
+    "bank_sms_requested": false,
+    "native_client_exit_code": 0,
+    "receipt": {
+      "attempt_id": "qualifier-sms-no-message",
+      "slot": 2,
+      "source": "goip_udp",
+      "received": false,
+      "correlation": "not_established",
+      "ambiguous": false,
+      "expired": false,
+      "consumed": false,
+      "bank_accepted": false,
+      "financial_success": false
+    },
+    "wrong_reader_refused": true,
+    "qualification_reservation_closed": true
+  },
+  "personal_route_read_only_checks": {
+    "slot2_recipient_count": 1,
+    "telegram_bot_get_me_authenticated": true,
+    "telegram_message_delivery_proven": false
+  },
+  "before_replacement": {
+    "checked_at": "2026-10-18T14:06:11.761206+00:00",
+    "inbox_state": "idle",
+    "authenticated_slot2_sms_packets_seen_under_old_exclusive_route": 1,
+    "telegram_forwarding_for_that_packet": "suppressed_by_previous_implementation",
+    "content_read_or_exported": false,
+    "retroactive_recovery_by_this_correction": false
+  },
+  "preserved_services": {
+    "redis_started_at": "2026-10-17T01:40:03.466502492Z",
+    "watchtower_started_at": "2026-10-17T01:40:03.35930744Z",
+    "redis_ping": "PONG",
+    "pi4_asterisk": "exited/restart=no",
+    "pi3_untracked_backups_preserved": true,
+    "tls_certificate_and_control_token_preserved": true
+  },
+  "ports": {
+    "private_https": "100.84.139.93:9443",
+    "original_udp": "44444/udp"
+  },
+  "limits": [
+    "No new real SMS arrived during the post-deployment checks; live Telegram delivery not demonstrated.",
+    "The original personal Redis/Telegram path is best effort, without qualified durable outbox/retry or deduplication.",
+    "Consuming/expiring the private inbox does not erase personal Redis/Telegram copies.",
+    "Central durable reservation, machine provisioning and real bank correlation remain unqualified.",
+    "The pinned qualification certificate expires 2026-11-17T13:24:51Z.",
+    "Pi3 Docker memory controller unavailable; no boot change or reboot performed."
+  ]
+}

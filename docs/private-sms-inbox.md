@@ -108,8 +108,9 @@ yet been requested or received by this integration.
 Telegram command, send and launch errors now emit fixed metadata only and do
 not terminate the UDP/private-inbox process. The existing app still uses its
 one configured Telegram bot for all personal slots, including slot 2; workers never use that token or
-join its conversations. Fourteen inbox/receiver tests pass locally. Exact-image results and remote
-verification for the correction are recorded separately after deployment.
+join its conversations. Fourteen inbox/receiver tests pass locally and on the exact deployed Pi 3
+image. The [fan-out correction evidence](personal-slot2-fanout-2026-10-18.json)
+records those results and the remote verification.
 The inherited personal Telegram path remains best effort: its ACK precedes
 durable delivery, its legacy Redis deduplication is not a delivery guarantee,
 and it has no durable Telegram retry/outbox. This change restores forwarding;
@@ -136,3 +137,22 @@ Automatic certificate rotation and central machine provisioning are not
 delivered. The Pi 3 kernel reported that Docker memory limits are unavailable;
 no boot modification/reboot was made. The existing local image/credentials
 remain private and are not exported or published.
+
+## Personal fan-out correction delivered — 18 October 2026
+
+Code `1f7bbc7`, local image
+`sha256:b2dfe179f3d04059dac29213f730c4e20f45402d22380a91c9680367afb42895`,
+app replaced at 14:06:52 UTC. Fourteen tests pass on that image, including the
+actual receiver with mocked personal Telegram forwarding and private receipt of
+the same synthetic SMS. Source hashes match between checkout and container.
+From Pi 4: validated TLS, authorized 200 and unauthorized 403, authenticated
+heartbeat age 8.42 s. The native client again reads an empty qualification
+attempt and rejects a wrong reader; that reservation was explicitly closed.
+
+The existing slot-2 recipient count is one and Telegram `getMe` authenticates;
+these read-only checks are not a delivery test. No real SMS arrived during the
+post-deployment observation, so live Telegram delivery remains **NOT RUN**.
+Before replacement, the old exclusive route had counted one authenticated
+slot-2 SMS packet and suppressed its personal forwarding. Its content was not
+read/exported; this correction does not retroactively recover it. Redis,
+Watchtower, GoIP configuration, credentials and Pi 4/Asterisk are preserved.
