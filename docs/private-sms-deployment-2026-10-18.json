@@ -1,0 +1,74 @@
+{
+  "code_revision": "3fa42c69463b30e70ff9af09b07b3f0e15f05d73",
+  "scope": "authorized_manual_prototype_deployment_on_existing_pi3_receiver",
+  "image_id": "sha256:12d737419e42205eb8b23c0c11acad7ef1b4ee313bfd2eaeeed344ef393c3961",
+  "base_image_id": "sha256:13fc885a6af69eb7af72bff3e917ef3e76f08a5260a650c7115e2c0c2d553f73",
+  "receiver_file_sha256": "26aabd3c3d509a1e622ae5a9ce05474478d284c78ba448edeb0349308a1a1402",
+  "private_inbox_file_sha256": "b1feef2af0bf56b5a16adde373329938c9d1a0d12abf4f5cb85a5571e9f454cc",
+  "tests": {
+    "local_node": 10,
+    "pi3_exact_image_node": 10,
+    "radio_sms_sent": 0,
+    "bank_otp_requested": 0,
+    "bank_otp_received": 0,
+    "real_payment_submitted": false
+  },
+  "private_https_from_pi4": {
+    "checked_at": "2026-10-18T13:42:25.413244+00:00",
+    "client_host": "mbrpi4dz",
+    "architecture": "aarch64",
+    "tls_certificate_verified": true,
+    "certificate_sha256": "ac2e1cfd3030e45eecbe0180fdf41c32a31d4253362effd169ae7af29eda5e4f",
+    "authenticated_status": 200,
+    "anonymous_status": 403,
+    "wrong_credential_status": 403,
+    "state": "unarmed",
+    "protected_slot": 2,
+    "last_authenticated_slot2_heartbeat_at": "2026-10-18T13:42:16.940Z",
+    "heartbeat_age_seconds": 8.473244,
+    "counters": {
+      "protected_sms": 0,
+      "rejected_packets": 0,
+      "duplicates": 0
+    },
+    "durable_channel_reservation": false,
+    "financial_success": false
+  },
+  "native_worker_client": {
+    "checked_at": "2026-10-18T13:45:12.172348+00:00",
+    "source_revision": "a68c1e09675c9d0e7c92b07e7c0332f4feaceba7",
+    "worker_image": "sha256:f6fbf074bcdb2a683845e24568463136cbe52807edfe1dc6744e1f807115c94e",
+    "scope": "manual_nonfinancial_qualification",
+    "bank_sms_requested": false,
+    "native_client_exit_code": 0,
+    "receipt": {
+      "attempt_id": "qualifier-sms-no-message",
+      "slot": 2,
+      "source": "goip_udp",
+      "received": false,
+      "correlation": "not_established",
+      "ambiguous": false,
+      "expired": false,
+      "consumed": false,
+      "bank_accepted": false,
+      "financial_success": false
+    },
+    "wrong_reader_refused": true,
+    "qualification_reservation_closed": true
+  },
+  "preserved_services": {
+    "redis_started_at": "2026-10-17T01:40:03.466502492Z",
+    "watchtower_started_at": "2026-10-17T01:40:03.35930744Z",
+    "redis_ping": "PONG",
+    "pi4_asterisk": "exited/restart=no",
+    "pi3_untracked_backups_preserved": true
+  },
+  "certificate_not_after": "2026-11-17T13:24:51Z",
+  "limits": [
+    "central durable reservation/fencing and machine identity not integrated",
+    "real bank SMS sender/format/reference not yet qualified",
+    "private receiver has not received a real banking OTP",
+    "Pi3 kernel does not enforce Docker memory limits; no boot change made",
+    "original local base image may contain the historical dotenv configuration; not published"
+  ]
+}

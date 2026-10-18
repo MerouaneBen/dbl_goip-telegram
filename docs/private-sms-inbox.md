@@ -92,4 +92,24 @@ yet been requested or received by this integration.
 Telegram command, send and launch errors now emit fixed metadata only and do
 not terminate the UDP/private-inbox process. The existing app still uses its
 one configured Telegram bot for other slots; workers never use that token or
-join its conversations. Nine inbox tests pass locally and on the Pi 3.
+join its conversations. Ten inbox tests pass locally and on the exact Pi 3 image, including the actual
+receiver source with simulated Telegram failures.
+
+
+## Delivery evidence — 18 October 2026
+
+[Sanitized deployment evidence](private-sms-deployment-2026-10-18.json) records
+code revision `3fa42c6`, immutable local image, code hashes, ten tests on Pi 3,
+TLS and authorization checks from Pi 4, a fresh authenticated GoIP heartbeat,
+and the real native worker receipt client with a temporary nonfinancial
+attempt. A wrong reader token was rejected and that test reservation was
+explicitly closed. No bank SMS or payment was triggered. Only app was
+recreated; Redis and Watchtower retain their 17 October start times, Redis
+returns PONG, and Pi 4 Asterisk remains stopped. Two pre-existing untracked
+backup files in the remote checkout are preserved.
+
+The listener uses a private pinned certificate expiring 17 November 2026.
+Automatic certificate rotation and central machine provisioning are not
+delivered. The Pi 3 kernel reported that Docker memory limits are unavailable;
+no boot modification/reboot was made. The existing local image/credentials
+remain private and are not exported or published.
